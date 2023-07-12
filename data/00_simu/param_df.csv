@@ -1,0 +1,9 @@
+shape,trend,min,max,velocity,l,breaktime,r,H,expected_traj,expected_class,iter
+cst,NA,3,NA,NA,100,NA,1.0,0.75,stable_constant,no_change,100
+cst,NA,2.5,NA,NA,100,NA,1.6,0.75,stable_constant,no_change,100
+lin,pos,1,5,NA,100,NA,1.6,0.75,decrease_constant,linear,100
+lin,neg,1,5,NA,100,NA,1.6,0.75,increase_constant,linear,100
+lin,pos,2.5,4,NA,100,NA,0.75,2,decrease_decelerated,quadratic,100
+lin,pos,0,5,NA,100,NA,1.0,2,decrease_accelerated,quadratic,100
+abt,pos,3,6,NA,100,50,1.6,0.75,1_breakpoint,abrupt,100
+lin,pos,3,4,NA,100,NA,1.0,0.75,1_breakpoint,abrupt,100
