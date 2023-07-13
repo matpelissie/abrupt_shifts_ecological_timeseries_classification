@@ -52,28 +52,6 @@ ts_available <- function(id){
 }
 
 
-#' #' Get optimal number of breakpoints
-#' #' from https://www.marinedatascience.co/blog/2019/09/28/comparison-of-change-point-detection-methods/
-#' #'
-#' #' @param id short stock ID character
-#' #'
-#' #' @return the optimal number of breakpoints in the time series based on the BIC
-#' #' @export
-#'
-#' opt_bpts <- function(id) {
-#'   #id = bpts_sum$RSS["BIC",]
-#'   n <- length(id)
-#'   lowest <- vector("logical", length = n-1)
-#'   lowest[1] <- FALSE
-#'   for (i in 2:n) {
-#'     lowest[i] <- id[i] < id[i-1] & id[i] < id[i+1]
-#'   }
-#'   out <- as.integer(names(id)[lowest])
-#'   # if (is.na(out)) out <- 5
-#'
-#'   return(out)
-#' }
-
 
 #' Extract a stock RAMLBD time series
 #'

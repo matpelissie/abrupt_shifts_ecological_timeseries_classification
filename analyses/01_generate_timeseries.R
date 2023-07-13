@@ -8,7 +8,14 @@
 #
 ###-###-###-###-###-###-###-###-###
 
-devtools::load_all()
+# devtools::load_all()
+
+source("analyses/00_packages.R")
+source("R/custom_functions.R")
+source("R/functions_simu.R")
+source("R/functions_trajclass.R")
+source("R/functions_RAMLDB.R")
+
 set.seed(2)
 
 # Generate and store simulated timeseries ---------------------------------
@@ -39,11 +46,11 @@ for (n in 1:nrow(noise_df)){
   noise_comb <- sprintf("l%g_se%g_sr%g_su%g_jfr%g_jsz%g",l,se,sr,su,jfr,jsz)
 
   simu_list[[ noise_comb ]] <- all_simu
-  print(n)
+  print(paste0(n,"/",nrow(noise_df)))
 }
 
 saveRDS(simu_list, paste0("data/00_simu/all_simu_", name, ".rds"))
-
+print("Full length timeseries simulated and saved.")
 
 
 # Make subsampling of stored time series ----------------------------------
@@ -107,6 +114,8 @@ simu_list_l20_1 <- lapply(simu_list,
 
 saveRDS(simu_list_l20_1, "data/00_simu/all_simu_l20_1.rds")
 
+print("Subsampled timeseries generated and saved.")
+
 
 # Generate 2 breakpoints timeseries ---------------------------------------
 
@@ -136,7 +145,8 @@ for (n in 1:nrow(noise_df)){
   noise_comb <- sprintf("l%g_se%g_sr%g_su%g_jfr%g_jsz%g",l,se,sr,su,jfr,jsz)
 
   simu_list_mlt[[ noise_comb ]] <- all_simu
-  print(n)
+  print(paste0(n,"/",nrow(noise_df)))
 }
 
 saveRDS(simu_list_mlt, paste0("data/00_simu/all_simu_", name, ".rds"))
+print("Multi-breaks timeseries simulated and saved.")

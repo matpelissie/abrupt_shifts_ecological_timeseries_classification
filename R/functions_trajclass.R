@@ -881,7 +881,7 @@ res_trend <- function(sets,
 #' @param abr_mtd a vector with abbreviation(s) corresponding to the breakpoints method(s) to use
 #' ("cp", "cp2", "str_m", "str_t", "ecpt_m", "ecpt_t", "asd", "mcp", "chg")
 #' @param asd_thr a numeric threshold for as_detect method
-#' @param asd_chk a logical paramater for check_true_shift in asd_fct2
+#' @param asd_chk a logical paramater for check_true_shift in asd_fct
 #'
 #' @return a data frame with results of breakpoints analyses
 #' @export
@@ -916,7 +916,7 @@ abrupt_classif <- function(sets, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_t
 #' @param abr_mtd a list of abbreviation with breakpoints methods to use (see function abrupt_classif for the list)
 #' @param type a character specifying whether the series come from simulations ("sim") or RAMLDB ("RAM")
 #' @param asd_thr a numeric threshold for as_detect method
-#' @param asd_chk a logical paramater for check_true_shift in asd_fct2
+#' @param asd_chk a logical paramater for check_true_shift in asd_fct
 #' @param apriori logical to state whether expected class and trajectories are indicated
 #'
 #' @return a data frame with the results of different trajectory fitting,
@@ -976,7 +976,7 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad
 #' @param abr_mtd a list of abbreviation with breakpoints methods to use (see function abrupt_classif for the list)
 #' @param type a character specifying whether the series come from simulations ("sim") or RAMLDB ("RAM")
 #' @param asd_thr a numeric threshold for as_detect method
-#' @param asd_chk a logical paramater for check_true_shift in asd_fct2
+#' @param asd_chk a logical paramater for check_true_shift in asd_fct
 #' @param noise_comb
 #' @param showplots logical that indicate whether or not to show plots (slows down classification)
 #' @param save_plot logical, whether to save plots or not

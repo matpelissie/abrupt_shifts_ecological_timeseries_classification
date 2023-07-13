@@ -8,11 +8,12 @@
 #
 ###-###-###-###-###-###-###-###-###
 
-devtools::load_all()
+# devtools::load_all()
 
-library('tidyverse')
+source("analyses/00_packages.R")
 source("R/custom_functions.R")
 source("R/functions_simu.R")
+source("R/functions_output.R")
 source("R/functions_trajclass.R")
 source("R/functions_RAMLDB.R")
 
@@ -71,6 +72,8 @@ for (l in 1:length(name)){
   saveRDS(outlist_aicasd, paste0("analyses/classif/library/outlist_",
                                  name[l],"_",str,"_thr",asd_thr[l],".rds"))
 }
+print("Full classification done!")
+
 
 
 # Classification based on AICc only (steps 1, 2bc, 3) ---------------------
@@ -107,6 +110,7 @@ for (l in 1:length(name)){
   saveRDS(outlist_aic, paste0("analyses/classif/library/outlist_",
                               name[l],"_",str,"_loo",run_loo,".rds"))
 }
+print("Classification based on AICc only done!")
 
 
 
@@ -212,3 +216,5 @@ for (j in 1:length(transform)){
 
   }
 }
+print("Classification for timeseries transformations done!")
+

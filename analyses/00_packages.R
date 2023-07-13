@@ -1,7 +1,12 @@
 
 # Packages required -------------------------------------------------------
 
-devtools::install_github("caboulton/asdetect")
-install.packages(c("patchwork", "MuMIn", "chngpt", "ggtext"), deps = TRUE)
-devtools::install_github("ricardo-bion/ggradar")
-# install.packages(c("ggradar"), deps = TRUE)
+library(tidyverse)
+library(patchwork)
+library(cowplot)
+library(MuMIn)
+library(chngpt)
+library(ggtext)
+library(pheatmap)
+library(asdetect) # devtools::install_github("caboulton/asdetect")
+library(ggradar) # devtools::install_github("ricardo-bion/ggradar")

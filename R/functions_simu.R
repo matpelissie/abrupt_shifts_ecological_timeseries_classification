@@ -855,107 +855,22 @@ bifurc_analysis <- function(Ts, K, rmax=3, rstep=0.1,
 #' @return a one-row data frame with info about potentially detected breakpoints
 #' @export
 
-asd_fct <- function(stock_ts, asd_thr, check_true_shift){
+asd_fct <- function(stock_ts, asd_thr, check_true_shift, lowwl, highwl, mad_thr, mad_cst){
 
   len <- length(stock_ts)
-
-  detect <- asdetect::as_detect(stock_ts, lowwl=2)
-  # plot(detect, type='l')
-  # returns position of shift (or of the maximum detected value):
-  # where <- asdetect::where_as(detect, thresh = asd_thr) # error when only two consecutive values above the threshold
-  where <- list()
-  where[["as_pos"]] <- which.max(abs(detect))
-  where[["dt_val"]] <- detect[where[["as_pos"]]]
-
-  if(check_true_shift){
-
-    if(abs(where$dt_val)>asd_thr){
-
-      # returns 1 if true abrupt shift detected:
-      # true_shift <- asdetect::shift_type(stock_ts, where, width=7)
-      if (len<20) true_shift <- custom_shift_type(stock_ts, where$as_pos, width = 2)
-      else true_shift <- custom_shift_type(stock_ts, where$as_pos, width = 7)
-
-    } else {true_shift <- 0}
-
-    condition <- abs(where$dt_val)>asd_thr & true_shift == 1
-
-  } else {condition <- abs(where$dt_val)>asd_thr}
-
-  if(condition){
-
-    # Not used: to build fitting
-    # asd_fac <- factor(c(rep("segment1", where$as_pos), rep("segment2", length(stock_ts)-where$as_pos)))
-    # fm_asd <- lm(stock_ts ~ asd_fac - 1)
-    # pred_asd <- data.frame(year = time(stock_ts),
-    #                        bp = predict(fm_asd, stock_ts), segment = asd_fac)
-
-    asd_out <- data.frame(abbr="asd",
-                          mtd="asdetect",
-                          n_brk=length(where$as_pos),
-                          loc_brk=c(where$as_pos, NA)[1] + start(stock_ts)[1] - 1 ,
-                          aic=NA,
-                          trend=NA,
-                          mag=NA,
-                          SDbef=NA,
-                          SDaft=NA,
-                          step_size=NA)
-  } else {
-
-    asd_out <- data.frame(abbr="asd",
-                          mtd="asdetect",
-                          n_brk=0,
-                          loc_brk=NA,
-                          aic=NA,
-                          trend=NA,
-                          mag=NA,
-                          SDbef=NA,
-                          SDaft=NA,
-                          step_size=NA)
-
-  }
-
-  return(asd_out)
-}
-
-
-
-#' Breakpoints analysis using 'asdetect' package (based on change in gradient)
-#'
-#' @param stock_ts time series to analyse as 'ts' object
-#' @param asd_thr numerical, value for detection threshold
-#'
-#' @return a one-row data frame with info about potentially detected breakpoints
-#' @export
-
-asd_fct2 <- function(stock_ts, asd_thr, check_true_shift, lowwl, highwl, mad_thr, mad_cst){
-
-  len <- length(stock_ts)
-  # detect <- asdetect::as_detect(stock_ts, lowwl=2)
   detect <- as_detect_mad(stock_ts, lowwl=lowwl, highwl=highwl, mad_thr=mad_thr, mad_cst=mad_cst)
-  # p <- plot(detect, type='l')
   # returns position of shift (or of the maximum detected value):
-  # where <- asdetect::where_as(detect, thresh = asd_thr) # error when only two consecutive values above the threshold
-  # where <- try(asdetect::where_as(detect, thresh = asd_thr), silent=TRUE)
   where <- try(where_as_quiet(detect, thresh = asd_thr, quiet=TRUE), silent=TRUE)
 
   if(class(where)[1]=="try-error"){
 
-    # where_low <- try(asdetect::where_as(detect, thresh = asd_thr-0.05))
-    # where_low <- try(asdetect::where_as(detect, thresh = asd_thr-0.05))
-    # where_high <- try(asdetect::where_as(detect, thresh = asd_thr+0.05))
-    # where_low <- try(asdetect::where_as(detect, thresh = 0))
     where_low <- try(where_as_quiet(detect, thresh = 1, quiet=TRUE))
-    # where_high <- try(asdetect::where_as(detect, thresh = 1))
 
     where <- list()
     where$as_pos <- where_low$as_pos
     where$dt_val <- where_low$dt_val
 
   }
-  # where <- list()
-  # where[["as_pos"]] <- which.max(abs(detect))
-  # where[["dt_val"]] <- detect[where[["as_pos"]]]
 
   # One line multiple as_detect breakpoints
 
@@ -970,10 +885,6 @@ asd_fct2 <- function(stock_ts, asd_thr, check_true_shift, lowwl, highwl, mad_thr
                         SDaft=NA,
                         step_size=NA,
                         nrmse=NA)
-
-  # Discard breakpoints too close to the start or end (not done here, treated in best_traj function)
-  # where$dt_val <- where$dt_val[where$as_pos>5 & where$as_pos<=len-5]
-  # where$as_pos <- where$as_pos[where$as_pos>5 & where$as_pos<=len-5]
 
   if (length(where$as_pos)>0){
 
@@ -1036,23 +947,12 @@ chg_fct <- function(ts){
                          bp = chg$best.fit$fitted.values
                          )
   # k <- 3 # number of variables in the model
-  # rsq <- 1 - sum(residuals(chg)^2)/sum(residuals(lm(ts$Y~1))^2)
-  # adj.rsq <- 1 - ((1-rsq^2)*(dim(ts)[1]-1)/(dim(ts)[1]-k-1))
   nrmse <- sqrt(sum(residuals(chg)^2)/length(ts$Y))/sd(ts$Y)
-  # sd1 <- sd(ts$Y[1:chg$chngpt])
-  # sd2 <- sd(ts$Y[chg$chngpt:length(ts$Y)])
-  # nrmse <- sqrt(sum(residuals(chg)^2)/length(ts$Y))/((sd1*chg$chngpt+sd2*(length(ts$Y)-chg$chngpt+1))/(length(ts$Y)+1))
-
-  # nrmse <- sqrt(sum(residuals(chg)^2)/length(ts$Y))/mean(ts$Y)
-
-  # summary(chg)
-  # plot(chg)
 
   chg_out <- data.frame(abbr = "chg",
                         mtd = "chgnpt",
                         n_brk = 1,
                         loc_brk = chg$chngpt,
-                        # aic = AIC(chg),
                         aic = MuMIn::AICc(chg),
                         trend = ifelse(pred_chg$bp[1] > pred_chg$bp[length(pred_chg$bp)],
                                        "decrease", "increase"),
@@ -1078,81 +978,12 @@ chg_fct <- function(ts){
 }
 
 
-
-
-#' Breakpoints analysis using 'mcp' package
-#'
-#' @param ts time series to analyse as 'ts' object
-#'
-#' @return a one-row data frame with info about potentially detected breakpoints
-#' @export
-
-mcp_fct <- function(ts){
-
-
-  # Model with one breakpoint:
-  abrupt <- list(
-    Y ~ 1,
-    Y ~ 1 ~ 1
-  )
-  fit <- mcp::mcp(abrupt, data=ts, par_x = "year")
-  # plot(fit)
-  summ_fit <- summary(fit)
-  fit$loo <- mcp::loo(fit)
-  # fit$waic <- mcp::waic(fit)
-
-  # Model with slope only:
-  linear <- list(
-    Y ~ 1 + year
-  )
-  fit2 <- mcp::mcp(linear, data=ts, par_x = "year")
-  # plot(fit2)
-  summ_fit2 <- summary(fit2)
-  fit2$loo <- mcp::loo(fit2)
-  # fit2$waic <- mcp::waic(fit2)
-
-  # Model with no change:
-  no_change <- list(
-    Y ~ 1
-  )
-  fit3 <- mcp::mcp(no_change, data=ts, par_x = "year")
-  # plot(fit3)
-  summ_fit3 <- summary(fit3)
-  fit3$loo <- mcp::loo(fit3)
-  # fit3$waic <- mcp::waic(fit3)
-
-  (loo_cv <- loo::loo_compare(list("abrupt"=fit$loo,
-                                   "linear"=fit2$loo,
-                                   "no_change"=fit3$loo)))
-  ratio_loo <- (loo_cv[,1]/loo_cv[,2])[-1]
-  best_traj <- rownames(loo_cv)[1]
-
-
-  mcp_out <- data.frame(abbr="mcp",
-                        mtd="mcp",
-                        best_traj=best_traj,
-                        n_brk=ifelse(best_traj=="abrupt",1,0),
-                        loc_brk=ifelse(best_traj=="abrupt",
-                                       summ_fit %>% filter(name=="cp_1") %>% pull(mean),
-                                       NA),
-                        aic=NA)
-
-  return(mcp_out)
-
-  # (waic_cv <- loo::loo_compare(list("abrupt"=fit$waic,
-  #                                   "linear"=fit2$waic,
-  #                                   "no_change"=fit3$waic)))
-  # ratio_waic <- waic_cv[2,1]/waic_cv[2,2]
-
-}
-
-
 #' Multiple breakpoints analysis
 #'
 #' @param ts time series to analyses as data frame (3 columns: year, Y, Y_SE)
 #' @param abr_mtd a vector with abbreviation(s) corresponding to the breakpoints method(s) to use
 #' @param asd_thr a numeric threshold for as_detect method
-#' @param asd_chk a logical paramater for check_true_shift in asd_fct2
+#' @param asd_chk a logical paramater for check_true_shift in asd_fct
 #'
 #' @return a list of three objects:
 #' one data frame with info about potentially detected breakpoints
@@ -1173,11 +1004,9 @@ shifts <- function(ts, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cs
 
   if ("asd" %in% abr_mtd){
 
-    # asd_out <- asd_fct(stock_ts, asd_thr, check_true_shift=FALSE)
-    asd_out <- asd_fct2(stock_ts, asd_thr, check_true_shift=asd_chk, lowwl, highwl=highwl, mad_thr, mad_cst)
+    asd_out <- asd_fct(stock_ts, asd_thr, check_true_shift=asd_chk, lowwl, highwl=highwl, mad_thr, mad_cst)
     res_table <- rbind(res_table, asd_out$df)
   }
-
 
   if ("chg" %in% abr_mtd){
 
@@ -1187,7 +1016,6 @@ shifts <- function(ts, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cs
     res_table <- rbind(res_table, chg_out)
 
   }
-
 
   if ("str_m" %in% abr_mtd & "chg" %in% abr_mtd){
 
@@ -1375,8 +1203,6 @@ plot_simu_simple <- function (lib_ts, var, tbcolor="black", alpha=1, xname="", y
 
 
 
-
-
 #' Plot a time series with breakpoints
 #'
 #' @param ts time series dataframe
@@ -1419,25 +1245,6 @@ plot_bp <- function(ts, shifts_res, abr_mtd, best_traj=NULL, best_traj_loo=NULL)
       # scale_y_continuous(
       #   sec.axis = sec_axis(~.*400/max(ts[[names(ts)[2]]])/2, name = "Brks freq LOO", breaks=seq(0,100,25)))+
 
-      # ggdist::stat_dots(
-      #   data=best_traj_loo %>%
-      #     dplyr::filter(class=="abrupt"),
-      #   inherit.aes = FALSE,
-      #   aes(x=loc_brk_chg),
-      #   fill="blue", alpha=.3, colour="blue",
-      #   binwidth = 1,
-      #   dotsize=0.6,
-    #   stackratio = 0.5)+
-    #
-    # ggdist::stat_dots(
-    #   data=best_traj_loo %>%
-    #     dplyr::filter(class=="abrupt"),
-    #   inherit.aes = FALSE,
-    #   aes(x=loc_brk_asd),
-    #   fill="red", alpha=.3, colour="red",
-    #   binwidth = 1,
-    #   dotsize=0.6,
-    #   stackratio = 0.5)+
 
     geom_point(data=best_traj_loo %>%
                  dplyr::left_join(ts, by="X") %>%
@@ -1448,49 +1255,6 @@ plot_bp <- function(ts, shifts_res, abr_mtd, best_traj=NULL, best_traj_loo=NULL)
   }
 
   plots_out[["pop"]] <- pop
-
-  # strucchange bpm
-
-  if ("str_m" %in% abr_mtd){
-
-    table_bpm <- shifts_res$res_table %>% filter(abbr=="str_m")
-    loc_brk_bpm <- table_bpm %>% pull(loc_brk) %>% str_split(";") %>% `[[`(1) %>% as.numeric()
-
-    bp_mean <- pop +
-      geom_vline(xintercept = loc_brk_bpm, col="red", linetype="dashed")+
-      geom_line(data = shifts_res$bpm_outlist[[2]], aes(x=year, y=bp), color="blue", alpha=0.7)+
-      ggtitle(paste("Best shape:", table_bpm$n_brk, "breakpoint(s) \nAIC =", round(table_bpm$aic, digits=3)))+
-
-      if (table_bpm$n_brk !=0){
-        geom_rect(data = shifts_res$bpm_outlist[[3]], aes(xmin = from, xmax = to, ymin = -Inf, ymax = Inf),
-                  fill="pink", alpha = 0.2, inherit.aes = FALSE)
-      } %>% suppressWarnings()
-
-    plots_out[["bp_mean"]] <- bp_mean
-  }
-
-
-
-  # strucchange bpt
-  if ("str_t" %in% abr_mtd){
-
-    table_bpt <- shifts_res$res_table %>% filter(abbr=="str_t")
-    loc_brk_bpt <- table_bpt %>% pull(loc_brk) %>% str_split(";") %>% `[[`(1) %>% as.numeric()
-
-    bp_reg <- pop +
-      geom_vline(xintercept = loc_brk_bpt, col="red", linetype="dashed")+
-      geom_line(data = shifts_res$bpt_outlist[[2]], aes(x=year, y=bp, col = segment), alpha=0.7)+
-      ggtitle(paste("Best shape:", table_bpt$n_brk, "breakpoint(s) \nAIC =", round(table_bpt$aic, digits=3)))+
-      scale_colour_manual(values = rep("#27d852", table_bpt$n_brk+1))+
-      theme(legend.position = "none")+
-      if (table_bpt$n_brk != 0){
-        geom_rect(data = shifts_res$bpt_outlist[[3]], aes(xmin = from, xmax = to, ymin = -Inf, ymax = Inf),
-                  fill="pink", alpha = 0.2, inherit.aes = FALSE)
-      } %>% suppressWarnings()
-
-    plots_out[["bp_reg"]] <- bp_reg
-  }
-
 
   # chgnpt chg
   if ("chg" %in% abr_mtd){
