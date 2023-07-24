@@ -8,7 +8,7 @@
 #
 ###-###-###-###-###-###-###-###-###
 
-devtools::load_all()
+# devtools::load_all()
 
 library('tidyverse')
 source("R/custom_functions.R")
@@ -382,201 +382,195 @@ dev.off()
 
 
 # Figure S4 - ROC curve to adjust asdetect threshold -----------------------
-#
-# roc_df <- readRDS("res/03_ricker_library/simu_library/roc_thr/roc_df_thr.rds") %>%
-#   dplyr::mutate(class = ifelse(class=="abrupt", "abrupt", "not abrupt"),
-#                 expected_class = ifelse(expected_class=="abrupt", "abrupt", "not abrupt"),
-#                 class = factor(class, levels=c("abrupt","not abrupt")),
-#                 expected_class = factor(expected_class, levels=c("abrupt","not abrupt")))
-#
-#
-# roc_thr <- data.frame()
-#
-# for (thr in seq(0,1,0.05)){
-#
-#   roc_line <- roc_df %>%
-#     dplyr::filter(asd_thr==thr) %>%
-#     split(.$length) %>%
-#     lapply(function(x){
-#       mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
-#       df <- data.frame(thres = thr,
-#                        TP = mat$byClass[["Sensitivity"]],
-#                        FP = 1 - mat$byClass[["Specificity"]])}) %>%
-#     do.call(what="rbind") %>% tibble::rownames_to_column(var="length")
-#
-#   roc_thr <- dplyr::bind_rows(roc_thr, roc_line)
-#
-# }
-#
-# # Load classification output for AICc only:
-# outlist_aic_l20 <- readRDS("res/03_ricker_library/simu_library/l20/outlist_l20_1_aic.rds")
-# outlist_aic_l25 <- readRDS("res/03_ricker_library/simu_library/l25/outlist_l25_1_aic.rds")
-# outlist_aic_l33 <- readRDS("res/03_ricker_library/simu_library/l33/outlist_l33_1_aic.rds")
-# outlist_aic_l50 <- readRDS("res/03_ricker_library/simu_library/l50/outlist_l50_1_aic.rds")
-# outlist_aic_l100 <- readRDS("res/03_ricker_library/simu_library/l100/outlist_l100_aic.rds")
-#
-#
-# roc_aic_only <- combine_length(list(outlist_aic_l20,
-#                                     outlist_aic_l25,
-#                                     outlist_aic_l33,
-#                                     outlist_aic_l50,
-#                                     outlist_aic_l100)) %>%
-#   dplyr::mutate(class = ifelse(class=="abrupt", "abr.", "not abr."),
-#                 expected_class = ifelse(expected_class=="abrupt", "abr.", "not abr."),
-#                 class = factor(class, levels=c("abr.","not abr.")),
-#                 expected_class = factor(expected_class, levels=c("abr.","not abr.")),
-#                 length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
-#   split(.$length) %>%
-#   lapply(function(x){
-#     mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
-#     df <- data.frame(TP = mat$byClass[["Sensitivity"]],
-#                      FP = 1 - mat$byClass[["Specificity"]])
-#
-#     return(list(mat, df))
-#   })
-#
-# roc_aic_only_df <- roc_aic_only %>%
-#   lapply(function(x) x %>% `[[`(2)) %>%
-#   do.call(what="rbind") %>%
-#   tibble::rownames_to_column(var="length")
-#
-# show_legend <- FALSE
-#
-# roc_aic_only_conf_mat <- roc_aic_only %>%
-#   lapply(function(x){
-#     mat <- x %>%
-#       `[[`(1) %>%
-#       `[[`("table")
-#
-#     mat[,1] <- mat[,1]/2400
-#     mat[,2] <- mat[,2]/7200
-#
-#     mat <- mat[nrow(mat):1, nrow(mat):1] # Reverse for consistency with full confusion matrix
-#
-#     mat %>%
-#       pheatmap::pheatmap(
-#         # pool_mat/byclass,
-#         color = grDevices::colorRampPalette(
-#           rev(RColorBrewer::brewer.pal(n = 7, name ="RdYlBu")))(100),
-#         breaks = seq(0, 1, .01),
-#         cluster_rows = FALSE, cluster_cols = FALSE,
-#         legend = show_legend, display_numbers = TRUE,
-#         number_format = "%.2f", fontsize = 40,
-#         number_color="black", fontsize_number = 50)
-#
-#   }
-#   )
-#
-# # Load classification output for AICc + asdetect:
-# outlist_aicasd_l20 <- readRDS("res/03_ricker_library/simu_library/l20/outlist_l20_1_aic_asd_thr0.15.rds")
-# outlist_aicasd_l25 <- readRDS("res/03_ricker_library/simu_library/l25/outlist_l25_1_aic_asd_thr0.15.rds")
-# outlist_aicasd_l33 <- readRDS("res/03_ricker_library/simu_library/l33/outlist_l33_1_aic_asd_thr0.15.rds")
-# outlist_aicasd_l50 <- readRDS("res/03_ricker_library/simu_library/l50/outlist_l50_1_aic_asd_thr0.15.rds")
-# outlist_aicasd_l100 <- readRDS("res/03_ricker_library/simu_library/l100/outlist_l100_aic_asd_thr0.15.rds")
-#
-#
-# roc_aicasd <- combine_length(list(outlist_aicasd_l20,
-#                                   outlist_aicasd_l25,
-#                                   outlist_aicasd_l33,
-#                                   outlist_aicasd_l50,
-#                                   outlist_aicasd_l100)) %>%
-#   dplyr::mutate(class = ifelse(class=="abrupt", "abr.", "not abr."),
-#                 expected_class = ifelse(expected_class=="abrupt", "abr.", "not abr."),
-#                 class = factor(class, levels=c("abr.","not abr.")),
-#                 expected_class = factor(expected_class, levels=c("abr.","not abr.")),
-#                 length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
-#   split(.$length) %>%
-#   lapply(function(x){
-#     mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
-#     df <- data.frame(TP = mat$byClass[["Sensitivity"]],
-#                      FP = 1 - mat$byClass[["Specificity"]])
-#
-#     return(list(mat, df))
-#   })
-#
-# roc_aicasd_df <- roc_aicasd %>%
-#   lapply(function(x) x %>% `[[`(2)) %>%
-#   do.call(what="rbind") %>%
-#   tibble::rownames_to_column(var="length")
-#
-# show_legend <- FALSE
-#
-# roc_aicasd_conf_mat <- roc_aicasd %>%
-#   lapply(function(x){
-#     mat <- x %>%
-#       `[[`(1) %>%
-#       `[[`("table")
-#
-#     mat[,1] <- mat[,1]/2400
-#     mat[,2] <- mat[,2]/7200
-#
-#     mat <- mat[nrow(mat):1, nrow(mat):1] # Reverse for consistency with full confusion matrix
-#
-#     mat %>%
-#       pheatmap::pheatmap(
-#         # pool_mat/byclass,
-#         color = grDevices::colorRampPalette(
-#           rev(RColorBrewer::brewer.pal(n = 7, name ="RdYlBu")))(100),
-#         breaks = seq(0, 1, .01),
-#         cluster_rows = FALSE, cluster_cols = FALSE,
-#         legend = show_legend, display_numbers = TRUE,
-#         number_format = "%.2f", fontsize = 40,
-#         number_color="black", fontsize_number = 50)
-#
-#   }
-#   )
-#
-#
-# pdf("ms/articles/art1/art1_files/figs/fig5_mats2.pdf", width = 36, height = 12)
-#
-# cowplot::plot_grid(roc_aic_only_conf_mat$l20$gtable,
-#                    roc_aic_only_conf_mat$l25$gtable,
-#                    roc_aic_only_conf_mat$l33$gtable,
-#                    roc_aic_only_conf_mat$l50$gtable,
-#                    roc_aic_only_conf_mat$l100$gtable,
-#                    roc_aicasd_conf_mat$l20$gtable,
-#                    roc_aicasd_conf_mat$l25$gtable,
-#                    roc_aicasd_conf_mat$l33$gtable,
-#                    roc_aicasd_conf_mat$l50$gtable,
-#                    roc_aicasd_conf_mat$l100$gtable,
-#                    ncol = 6, byrow=TRUE)
-# dev.off()
-#
-#
-# # Remove limit cases:
-# roc_thr <- roc_thr[-c(2,8,6,12),]
-#
-# p_roc_thr <- roc_thr %>%
-#   dplyr::mutate(length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
-#   ggplot(aes(x=FP, y=TP, color=length))+
-#   geom_line()+
-#   geom_point(alpha=0.2)+
-#   geom_abline(slope = 1, lty=2)+
-#   expand_limits(x=c(0,1), y=c(0,1))+
-#   # ggrepel::geom_label_repel(aes(label = ifelse(thres%%0.2==0,
-#   #                                              as.character(thres), "")),
-#   #                           box.padding = 0.3,
-#   #                           segment.color = "grey50",
-#   #                           max.overlaps=100)+
-#   geom_point(data=roc_aic_only_df, aes(x=FP, y=TP, color=length), shape=2, size=4)+
-#   theme_light()+
-#   theme(legend.position = "none")+
-#   labs(x="False Positive rate", y="True Positive rate")
-# p_roc_thr
-# ggsave(filename = "ms/articles/art1/art1_files/figs/fig5_base.pdf", width=10, height=10,
-#        plot = p_roc_thr)
-#
-# p_roc_thr_zoom <- p_roc_thr +
-#   coord_cartesian(xlim=c(0,0.25), ylim=c(0.75, 1)) +
-#   theme(legend.position = "none", panel.grid.minor = element_blank())+
-#   ggrepel::geom_label_repel(aes(label = ifelse(thres%%0.1==0,
-#                                                as.character(thres), "")),
-#                             box.padding = 0.3,
-#                             segment.color = "grey50",
-#                             max.overlaps=100)
-# p_roc_thr_zoom
-# ggsave(filename = "ms/articles/art1/art1_files/figs/fig52_zoom.pdf", width=4, height=4,
-#        plot = p_roc_thr_zoom)
+
+dir.create("analyses/figs/supp_mat/fig_s4", showWarnings = FALSE)
+
+# Load classification for different threshold values:
+roc_df <- readRDS("analyses/classif/roc/roc_df_thr.rds") %>%
+  # Simplify classification as abrupt/not abrupt:
+  dplyr::mutate(class = ifelse(class=="abrupt", "abrupt", "not abrupt"),
+                expected_class = ifelse(expected_class=="abrupt", "abrupt", "not abrupt"),
+                class = factor(class, levels=c("abrupt","not abrupt")),
+                expected_class = factor(expected_class, levels=c("abrupt","not abrupt")))
+
+# Make confusion matrices for each length and threshold value:
+roc_thr <- data.frame()
+
+for (thr in seq(0,1,0.05)){
+
+  roc_line <- roc_df %>%
+    dplyr::filter(asd_thr==thr) %>%
+    split(.$length) %>%
+    lapply(function(x){
+      mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
+      df <- data.frame(thres = thr,
+                       TP = mat$byClass[["Sensitivity"]],
+                       FP = 1 - mat$byClass[["Specificity"]])}) %>%
+    do.call(what="rbind") %>% tibble::rownames_to_column(var="length")
+
+  roc_thr <- dplyr::bind_rows(roc_thr, roc_line)
+
+}
+
+
+# Load classification output for AICc only:
+outlist_aic_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic.rds")
+outlist_aic_l25 <- readRDS("analyses/classif/library/outlist_l25_1_aic.rds")
+outlist_aic_l33 <- readRDS("analyses/classif/library/outlist_l33_1_aic.rds")
+outlist_aic_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic.rds")
+outlist_aic_l100 <- readRDS("analyses/classif/library/outlist_l100_aic.rds")
+
+# Make confusion matrices for each length:
+roc_aic_only <- combine_length(list(outlist_aic_l20,
+                                    outlist_aic_l25,
+                                    outlist_aic_l33,
+                                    outlist_aic_l50,
+                                    outlist_aic_l100)) %>%
+  dplyr::mutate(class = ifelse(class=="abrupt", "abr.", "not abr."),
+                expected_class = ifelse(expected_class=="abrupt", "abr.", "not abr."),
+                class = factor(class, levels=c("abr.","not abr.")),
+                expected_class = factor(expected_class, levels=c("abr.","not abr.")),
+                length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
+  split(.$length) %>%
+  lapply(function(x){
+    mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
+    df <- data.frame(TP = mat$byClass[["Sensitivity"]],
+                     FP = 1 - mat$byClass[["Specificity"]])
+
+    return(list(mat, df))
+  })
+
+# Summarise TPR and FPR into a data frame:
+roc_aic_only_df <- roc_aic_only %>%
+  lapply(function(x) x %>% `[[`(2)) %>%
+  do.call(what="rbind") %>%
+  tibble::rownames_to_column(var="length")
+
+# Plot confusion matrices for each length:
+roc_aic_only_conf_mat <- roc_aic_only %>%
+  lapply(function(x){
+    mat <- x %>%
+      `[[`(1) %>%
+      `[[`("table")
+
+    mat[,1] <- mat[,1]/2400
+    mat[,2] <- mat[,2]/7200
+
+    mat <- mat[nrow(mat):1, nrow(mat):1] # Reverse for consistency with full confusion matrix
+
+    mat %>%
+      pheatmap::pheatmap(
+        color = grDevices::colorRampPalette(
+          rev(RColorBrewer::brewer.pal(n = 7, name ="RdYlBu")))(100),
+        breaks = seq(0, 1, .01),
+        cluster_rows = FALSE, cluster_cols = FALSE,
+        legend = FALSE, display_numbers = TRUE,
+        number_format = "%.2f", fontsize = 40,
+        number_color="black", fontsize_number = 50)
+
+  }
+  )
+
+# Load classification output for AICc + asdetect:
+outlist_aicasd_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l25 <- readRDS("analyses/classif/library/outlist_l25_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l33 <- readRDS("analyses/classif/library/outlist_l33_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l100 <- readRDS("analyses/classif/library/outlist_l100_aic_asd_thr0.15_looTRUE.rds")
+
+# Make confusion matrices for each length:
+roc_aicasd <- combine_length(list(outlist_aicasd_l20,
+                                  outlist_aicasd_l25,
+                                  outlist_aicasd_l33,
+                                  outlist_aicasd_l50,
+                                  outlist_aicasd_l100)) %>%
+  dplyr::mutate(class = ifelse(class=="abrupt", "abr.", "not abr."),
+                expected_class = ifelse(expected_class=="abrupt", "abr.", "not abr."),
+                class = factor(class, levels=c("abr.","not abr.")),
+                expected_class = factor(expected_class, levels=c("abr.","not abr.")),
+                length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
+  split(.$length) %>%
+  lapply(function(x){
+    mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
+    df <- data.frame(TP = mat$byClass[["Sensitivity"]],
+                     FP = 1 - mat$byClass[["Specificity"]])
+
+    return(list(mat, df))
+  })
+
+# Plot confusion matrices for each length:
+roc_aicasd_conf_mat <- roc_aicasd %>%
+  lapply(function(x){
+    mat <- x %>%
+      `[[`(1) %>%
+      `[[`("table")
+
+    mat[,1] <- mat[,1]/2400
+    mat[,2] <- mat[,2]/7200
+
+    mat <- mat[nrow(mat):1, nrow(mat):1] # Reverse for consistency with full confusion matrix
+
+    mat %>%
+      pheatmap::pheatmap(
+        color = grDevices::colorRampPalette(
+          rev(RColorBrewer::brewer.pal(n = 7, name ="RdYlBu")))(100),
+        breaks = seq(0, 1, .01),
+        cluster_rows = FALSE, cluster_cols = FALSE,
+        legend = FALSE, display_numbers = TRUE,
+        number_format = "%.2f", fontsize = 40,
+        number_color="black", fontsize_number = 50)
+
+  }
+  )
+
+# Save confusion matrices:
+pdf("analyses/figs/supp_mat/fig_s4/fig_s4cd.pdf", width = 30, height = 12)
+
+cowplot::plot_grid(roc_aic_only_conf_mat$l20$gtable,
+                   roc_aic_only_conf_mat$l25$gtable,
+                   roc_aic_only_conf_mat$l33$gtable,
+                   roc_aic_only_conf_mat$l50$gtable,
+                   roc_aic_only_conf_mat$l100$gtable,
+                   roc_aicasd_conf_mat$l20$gtable,
+                   roc_aicasd_conf_mat$l25$gtable,
+                   roc_aicasd_conf_mat$l33$gtable,
+                   roc_aicasd_conf_mat$l50$gtable,
+                   roc_aicasd_conf_mat$l100$gtable,
+                   ncol = 5, byrow=TRUE)
+dev.off()
+
+
+# Remove failing limit cases (thr=0 and thr=0.05 for lengths 100 and 50):
+roc_thr <- roc_thr[-c(1,6,5,10),]
+
+# Plot and save complete ROC curve:
+p_roc_thr <- roc_thr %>%
+  dplyr::mutate(length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
+  ggplot(aes(x=FP, y=TP, color=length))+
+  geom_line()+
+  geom_point(alpha=0.2)+
+  geom_abline(slope = 1, lty=2)+
+  expand_limits(x=c(0,1), y=c(0,1))+
+  geom_point(data=roc_aic_only_df, aes(x=FP, y=TP, color=length), shape=2, size=4)+
+  theme_light()+
+  theme(legend.position = "none")+
+  labs(x="False Positive rate", y="True Positive rate")
+
+ggsave(filename = "analyses/figs/supp_mat/fig_s4/fig_s4a.pdf", width=10, height=10,
+       plot = p_roc_thr)
+
+# Plot and save a close-up of the ROC curve with threshold values annotated:
+p_roc_thr_zoom <- p_roc_thr +
+  coord_cartesian(xlim=c(0,0.25), ylim=c(0.75, 1)) +
+  theme(legend.position = "none", panel.grid.minor = element_blank())+
+  ggrepel::geom_label_repel(aes(label = ifelse(thres%%0.1==0,
+                                               as.character(thres), "")),
+                            box.padding = 0.3,
+                            segment.color = "grey50",
+                            max.overlaps=100)
+
+ggsave(filename = "analyses/figs/supp_mat/fig_s4/fig_s4b.pdf", width=4, height=4,
+       plot = p_roc_thr_zoom)
 
 # All combined with Inkscape
 
