@@ -10,11 +10,9 @@
 
 
 source("analyses/00_packages.R")
-source("R/custom_functions.R")
 source("R/functions_simu.R")
 source("R/functions_output.R")
 source("R/functions_trajclass.R")
-source("R/functions_RAMLDB.R")
 
 
 dir.create("analyses/classif", showWarnings = FALSE)
@@ -45,7 +43,7 @@ asd_thr <- rep(0.15,5)
 
 for (l in 1:length(name)){
 
-  simu_list <- readRDS(paste0("data/03_simulations/all_simu_", name[l], ".rds"))
+  simu_list <- readRDS(paste0("data/00_simu/all_simu_", name[l], ".rds"))
 
   # Run classification in parallel:
   classif <-
@@ -244,14 +242,15 @@ for (j in 1:nrow(asd_thr_list)){ # For each threshold value
 
   for (l in 1:length(name)){ # For each length
 
-    simu_list <- readRDS(paste0("data/03_simulations/all_simu_", name[l], ".rds"))
+    simu_list <- readRDS(paste0("data/03_simulations/all_simu_",name[l],".rds"))
 
     # Run classification in parallel:
-    classif <- parallel::mclapply(1:length(simu_list),
-                                  function (i) classif_noise_comb(simu_list,
-                                                                  str, run_loo=run_loo,
-                                                                  asd_thr=asd_thr[l], i),
-                                  mc.cores = ncores)
+    classif <- parallel::mclapply(
+      1:length(simu_list),
+      function (i) classif_noise_comb(simu_list,
+                                      str, run_loo=run_loo,
+                                      asd_thr=asd_thr[l], i),
+      mc.cores = ncores)
 
     # Store trajectories:
     traj_list <- lapply(classif, function(x) x$trajs)

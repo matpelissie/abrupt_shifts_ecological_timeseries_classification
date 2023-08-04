@@ -1,45 +1,38 @@
 
-# Data preparation --------------------------------------------------------
+# I) Data preparation --------------------------------------------------------
 
-#' Trajectory classification (from Rigal et al. 2020)
+#' Process timeseries data prior classification
 #'
-#' @param df a data frame stemming from run_simu function
-#' @param thr unfeasibility threshold
-#' @param type a character specifying whether the series come from simulations ("sim") or from RAMLDB ("RAM")
+#' @param df data frame with timeseries to classify
+#' @param thr unfeasibility threshold (default 0)
+#' @param type character specifying whether the series come from simulations
+#' ("sim") or from empirical data ("RAM" or "data")
+#' @param apriori logical, whether expected trajectories are indicated
 #'
-#' @return a list of data frames ready for analyses
+#' @return list of data frames ready for analyses and the type of timeseries
+#'
 #' @export
 
 prep_data <- function(df, thr=0, type="sim", apriori){
 
-  if (type=="sim"){
+  if (type=="sim"){ # For simulated timeseries
 
+    # Reshape the data frame:
     if ("iter" %in% names(df)){
 
       ts_type <- "TB"
       dataset <- df %>%
         {if (apriori==TRUE) dplyr::select(., scen, iter, year, TB,
-                                          expected_traj, expected_class) else .} %>%
+                                          expected_traj,
+                                          expected_class) else .} %>%
         {if (apriori==FALSE) dplyr::select(., scen, iter, year, TB) else .} %>%
         dplyr::rename(Y=TB)
 
-      # %>%
-      # dplyr::mutate(scen=factor(scen, levels = unique(df$scen)))
       iter <- seq_len(max(df$iter))
       scen_list <- df %>% dplyr::distinct(scen) %>% pull()
     }
 
-  } else if (type=="RAM"){
-
-    ts_type <- names(df)[3]
-    iter <- 1
-    dataset <- df %>%
-      dplyr::rename(Y=ts_type) %>%
-      dplyr::mutate(iter = 1)
-
-    scen_list <- df %>% dplyr::distinct(scen) %>% pull()
-
-  } else if (type=="data"){
+  } else if (type=="RAM" | type=="data"){ # For empirical data
 
     ts_type <- names(df)[3]
     iter <- 1
@@ -51,6 +44,7 @@ prep_data <- function(df, thr=0, type="sim", apriori){
 
   }
 
+  # Break down the data frame into a list of timeseries:
   sets <- list()
   for (j in 1:length(scen_list)){
 
@@ -62,384 +56,486 @@ prep_data <- function(df, thr=0, type="sim", apriori){
 
       X <- dat$year
       Y <- dat$Y
-      Y_SE <- abs(rnorm(length(X), mean = 0.05*(max(Y)-min(Y)), sd = 0.005*(max(Y)-min(Y))))
 
       if (apriori==TRUE){
 
         expected_traj <- dat$expected_traj
         expected_class <- dat$expected_class
 
-        set <- data.frame(X=X, Y=Y, Y_SE=Y_SE, expected_traj=expected_traj, expected_class=expected_class)
+        set <- data.frame(X=X, Y=Y,
+                          expected_traj=expected_traj,
+                          expected_class=expected_class)
 
       } else if (apriori==FALSE){
 
-        set <- data.frame(X=X, Y=Y, Y_SE=Y_SE)
+        set <- data.frame(X=X, Y=Y)
       }
 
     })
 
     sets <- c(sets, dats)
   }
+
+  # Rename each timeseries:
   if (type=="sim"){
-    names(sets) <- paste0(rep(scen_list, each=max(df$iter)),"_iter", sprintf("%02d", 1:max(df$iter)))
+    names(sets) <- paste0(rep(scen_list, each=max(df$iter)),"_iter",
+                          sprintf("%02d", 1:max(df$iter)))
   } else {
     names(sets) <- scen_list
   }
-
-
-  # sets <- list()
-  # for (j in 1:length(scen_list)){
-  #
-  #   for (i in iter){
-  #
-  #     dat <- dataset %>% dplyr::filter(scen==scen_list[j] & iter==i)
-  #
-  #     X <- dat$year
-  #     Y <- dat$Y
-  #     Y_SE <- abs(rnorm(length(X), mean = 0.05*(max(Y)-min(Y)), sd = 0.005*(max(Y)-min(Y))))
-  #
-  #     if (apriori==TRUE){
-  #
-  #       expected_traj <- dat$expected_traj
-  #       expected_class <- dat$expected_class
-  #
-  #       set <- data.frame(X=X, Y=Y, Y_SE=Y_SE, expected_traj=expected_traj, expected_class=expected_class)
-  #
-  #     } else if (apriori==FALSE){
-  #
-  #       set <- data.frame(X=X, Y=Y, Y_SE=Y_SE)
-  #
-  #     }
-  #
-  #     sets[[ paste0(scen_list[j],"_iter", sprintf("%02d", i)) ]] <- set
-  #   }
-  #
-  # }
 
   if (!is.null(thr)){
     sets <- sets %>%
       lapply(function(x) x %>% dplyr::filter(Y>thr))
   }
 
-
 return(list("ts"=sets, "ts_type"=ts_type))
 
 }
 
 
-# Scale simulated time series (custom scaling)
 
-scale_simu <- function(simu_list, name){
+# II) Custom functions from asdetect ------------------------------------------
 
-  scaling <- simu_list[[1]] %>%
-    dplyr::group_by(scen, iter) %>%
-    dplyr::mutate(magn = max(TB)-min(TB)) %>%
-    dplyr::ungroup() %>%
-    dplyr::group_by(scen) %>%
-    dplyr::summarise(magn=mean(magn))
+# Adapted from 'as_detect' from the asdetect package to control the MAD threshold
 
-  scl_simu_list <- lapply(simu_list,
-                          function(x) x %>%
-                            dplyr::left_join(scaling, by="scen") %>%
-                            dplyr::group_by(scen, iter) %>%
-                            dplyr::mutate(TB = ifelse(expected_class!="no_change", (TB-mean(TB))/magn*2, TB),
-                                          # TB = (TB-mean(TB))/magn*2,
-                                          TB = TB+(5-first(TB))
-                            ) %>%
-                            dplyr::ungroup()
+as_detect_mad <-
+  function (ts, dt = NA, lowwl = 5, highwl = "default", mad_thr=3, mad_cst=1.4826){
+    l <- length(ts)
+    if (highwl == "default") {
+      higwl <- floor(l/3)
+    } else {
+      higwl <- highwl
+    }
+    tip_distrib <- rep(0, l) # counts how often timepoints are involved in windows exceeding 3*MAD
+    wls <- lowwl:higwl # set of window lengths
+    # grad <- list() # added: list of gradients
+
+    for (j in 1:length(wls)) { # For the different window length
+      breaks <- l/wls[j]
+      if (breaks != floor(breaks)) {
+        remainder <- l - floor(breaks) * wls[j]
+        ts_temp <- ts[(floor(remainder/2) + 1):(floor(remainder/2) +
+                                                  floor(breaks) * wls[j])]
+        # ts_temp: longest timeseries divisible by window length
+      }
+      if (breaks == floor(breaks)) {
+        remainder <- NA
+        ts_temp <- ts
+      }
+
+      lm_coeffs <- array(NA, dim = c(breaks, 2))
+      # lm_coeff: array to store intercept and slope of lm from each window of a given length
+
+      for (i in 1:breaks) { # For the different windows
+        lm_mod <- lm(ts_temp[1:wls[j] + ((i - 1) * wls[j])] ~
+                       c(1:wls[j])) # lm_mod: result of the linear regression made on a given window
+        lm_coeffs[i, ] <- lm_mod$coefficients
+      }
+
+      outlier_ind_up <- which((lm_coeffs[, 2] - median(lm_coeffs[, 2]))/mad(lm_coeffs[, 2], constant=mad_cst) > mad_thr)
+      outlier_ind_down <- which((lm_coeffs[, 2] - median(lm_coeffs[, 2]))/mad(lm_coeffs[, 2], constant=mad_cst) < -mad_thr)
+      # grad[[j]] <- rep((lm_coeffs[, 2] - median(lm_coeffs[, 2]))/mad(lm_coeffs[, 2]),each=wls[j])
+      # outlier_ind_up: list of windows with a slope above 3*MAD
+      # outlier_ind_down: list of windows with a slope below -3*MAD
+
+
+      # tip_distrib: counts how often timepoints are involved in windows exceeding 3*MAD
+      if (is.na(remainder)) {
+        for (k in outlier_ind_up) {
+          tip_distrib[1:wls[j] + ((k - 1) * wls[j])] <- tip_distrib[1:wls[j] +
+                                                                      ((k - 1) * wls[j])] + 1
+        }
+        for (k in outlier_ind_down) {
+          tip_distrib[1:wls[j] + ((k - 1) * wls[j])] <- tip_distrib[1:wls[j] +
+                                                                      ((k - 1) * wls[j])] - 1
+        }
+      }
+      if (!is.na(remainder)) {
+        for (k in outlier_ind_up) {
+          tip_distrib[(floor(remainder/2) + 1) + 1:wls[j] +
+                        ((k - 1) * wls[j])] <- tip_distrib[(floor(remainder/2) +
+                                                              1) + 1:wls[j] + ((k - 1) * wls[j])] + 1
+        }
+        for (k in outlier_ind_down) {
+          tip_distrib[(floor(remainder/2) + 1) + 1:wls[j] +
+                        ((k - 1) * wls[j])] <- tip_distrib[(floor(remainder/2) +
+                                                              1) + 1:wls[j] + ((k - 1) * wls[j])] - 1
+        }
+      }
+    }
+
+    # dt: timestep of the timeseries, if it is one leave default dt=NA
+    if (is.na(dt)) {
+      result <- tip_distrib/length(wls)
+      # result: cumulative contribution from all window lengths divided by the number of window lengths
+    } else {
+      t <- rep(NA, length(tip_distrib))
+      t[1] <- 0
+      for (i in 2:length(t)) {
+        t[i] <- t[i - 1] + dt
+      }
+      result <- data.frame(t = t, detect = tip_distrib/length(wls))
+    }
+    return(result)
+    # return(list("result"=result, "grad"=grad))
+  }
+
+environment(as_detect_mad) <- asNamespace('asdetect') # to call hidden functions from asdetect
+
+
+
+# Adapted from 'shift_type' from the asdetect package to solution a limit case
+
+custom_shift_type <- function (ts, where_as_pos, dt = FALSE, width = "tenth")
+{
+  if (width == "tenth") {
+    w <- floor(length(ts)/20) # shift_type needs timeseries of 20 or more
+  }
+  else {
+    w <- floor(width/2)
+  }
+  if (dt == FALSE) {
+    pos <- where_as_pos
+  }
+  else {
+    pos <- where_as_pos/dt
+    if (width != "tenth") {
+      w <- w/dt
+    }
+  }
+  if (pos <= w) { # include case when pos == w otherwise (pos - w) will equal 0 and cause length problem below
+    poss <- 1:(pos + w)
+  }
+  else if (pos > (length(ts) - w)) {
+    poss <- (pos - w):length(ts)
+  }
+  else {
+    poss <- (pos - w):(pos + w)
+  }
+  as_mod <- lm(ts[poss] ~ c(1:length(poss)))
+  full_mod <- lm(ts ~ c(1:length(ts)))
+  as_grad <- as_mod$coefficients[2]
+  full_grad <- full_mod$coefficients[2]
+  if (abs(as_grad) < abs(full_grad)) {
+    marker <- 0
+  }
+  else {
+    marker <- 1
+  }
+  return(marker)
+}
+
+environment(custom_shift_type) <- asNamespace('asdetect') # to call hidden functions from asdetect
+
+
+# Adapted from 'where_as' from the asdetect package to make it silent
+
+where_as_quiet <- function (ts, dt = NA, thresh = 0.7, quiet = FALSE)
+{
+  inds <- which(abs(ts) > thresh) # inds: position of timepoints with detection line above threshold
+
+  if (length(inds) > 0) { # if any point above threshold
+
+    encoding <- rle(diff(inds)) # encoding: lengths and values of runs of lag-1 difference
+
+    # numtip <- length(which(encoding$length != 1))
+    numtip <- length(which(encoding$value == 1)) # numtip: number of runs above threshold
+
+    # whichtip <- which(encoding$length != 1)
+    whichtip <- which(encoding$value == 1) # whichtip: position of runs in encoding
+
+    tip_pos <- rep(NA, numtip) # tip_pos: list of position(s) with min or max detection score
+    tip_prob <- rep(NA, numtip) # tip_prob: list of detection score(s) of min or max
+
+    for (k in 1:numtip) {
+      if (k == 1) {
+        if (ts[inds[1]] > 0) {
+          ## if maximum spread on several timepoint, it returns the first position:
+          # tip_pos[k] <- inds[which.max(ts[inds[1:(encoding$length[1])]] + 1)]
+          # tip_pos[k] <- inds[which.max( ts[ inds[1:(encoding$length[1] + 1)] ] )]
+
+          ## if maximum spread on several timepoint, it returns the median position:
+          tip_pos[k] <- floor(median(inds[which(ts[ inds[1:(encoding$length[1] + 1)] ] ==
+                                                  max( ts[ inds[1:(encoding$length[1] + 1)] ]))]))
+        }
+        if (ts[inds[1]] < 0) {
+          # tip_pos[k] <- inds[which.min(ts[inds[1:(encoding$length[1])]] + 1)]
+          # tip_pos[k] <- inds[which.min( ts[ inds[1:(encoding$length[1] + 1)] ] )]
+
+          tip_pos[k] <- floor(median(inds[which(ts[ inds[1:(encoding$length[1] + 1)] ] ==
+                                                  min( ts[ inds[1:(encoding$length[1] + 1)] ]))]))
+        }
+        tip_prob[k] <- ts[tip_pos[k]]
+      }
+      else {
+
+        inds_temp <- inds[sum(encoding$length[1:(whichtip[k] -
+                                                   1)]):sum(encoding$length[1:whichtip[k]]) +
+                            1] # inds_temp: for run k, positions of the kth run
+
+        if (ts[inds_temp[1]] > 0) {
+          # tip_pos[k] <- inds_temp[which.max(ts[inds_temp])]
+          tip_pos[k] <- floor(median(inds_temp[which(ts[inds_temp] == max(ts[inds_temp]))]))
+        }
+        if (ts[inds_temp[1]] < 0) {
+          # tip_pos[k] <- inds_temp[which.min(ts[inds_temp])]
+          tip_pos[k] <- floor(median(inds_temp[which(ts[inds_temp] == min(ts[inds_temp]))]))
+        }
+        tip_prob[k] <- ts[tip_pos[k]]
+      }
+    }
+    if (!is.na(dt)) {
+      t <- rep(NA, length(ts))
+      t[1] <- 0
+      for (i in 2:length(t)) {
+        t[i] <- t[i - 1] + dt
+      }
+      tip_pos <- t[tip_pos]
+    }
+    results <- list()
+    results$as_pos <- tip_pos
+    results$dt_val <- tip_prob
+    return(results)
+  }
+  if (length(inds) == 0) { # if no point above threshold, still return the maximum with a warning
+    results <- list()
+    results$as_pos <- which.max(abs(ts))
+    if (max(abs(ts)) == max(ts)) {
+      results$dt_val <- max(ts)
+    }
+    if (-max(abs(ts)) == min(ts)) {
+      results$dt_val <- min(ts)
+    }
+    if (!quiet) print("Threshold not detected, maximum returned instead")
+
+    return(results)
+  }
+}
+
+environment(where_as_quiet) <- asNamespace('asdetect') # to call hidden functions from asdetect
+
+
+
+# III) Breakpoint algorithms ---------------------------------------------------
+
+#' Breakpoints analysis using 'asdetect' package (Boulton & Lenton 2019)
+#'
+#' @param stock_ts timeseries to analyse as 'ts' object
+#' @param asd_thr numerical, value for detection threshold
+#' @param check_true_shift logical, whether to perform 'shift_type' function to
+#' rule out some kinds of false shifts
+#' @param lowwl lowest window length used in algorithm (default 5)
+#' @param highwl highest window length used in algorithm.
+#' If 'default' then highwl is set to 1/3 of the length of timeseries.
+#' @param mad_thr threshold of anomalous change in number
+#' of median absolute deviations (default 3)
+#' @param mad_cst correction factor for asymptotic normal consistency
+#'
+#' @return one-row data frame with info about potentially detected breakpoints
+#' @export
+
+asd_fct <- function(stock_ts, asd_thr, check_true_shift, lowwl, highwl, mad_thr, mad_cst){
+
+  len <- length(stock_ts)
+  detect <- as_detect_mad(stock_ts, lowwl=lowwl, highwl=highwl, mad_thr=mad_thr, mad_cst=mad_cst)
+  # returns position of shift (or of the maximum detected value):
+  where <- try(where_as_quiet(detect, thresh = asd_thr, quiet=TRUE), silent=TRUE)
+
+  if(class(where)[1]=="try-error"){
+
+    where_low <- try(where_as_quiet(detect, thresh = 1, quiet=TRUE))
+
+    where <- list()
+    where$as_pos <- where_low$as_pos
+    where$dt_val <- where_low$dt_val
+
+  }
+
+  # One line multiple as_detect breakpoints
+
+  asd_out <- data.frame(abbr="asd",
+                        mtd="asdetect",
+                        n_brk=0,
+                        loc_brk=NA,
+                        aic=NA,
+                        trend=NA,
+                        mag=NA,
+                        SDbef=NA,
+                        SDaft=NA,
+                        step_size=NA,
+                        nrmse=NA)
+
+  if (length(where$as_pos)>0){
+
+    for (i in 1:length(where$as_pos)){
+
+      if(check_true_shift){
+
+        if(abs(where$dt_val[i])>asd_thr){
+
+          # returns 1 if true abrupt shift detected:
+          # true_shift <- asdetect::shift_type(stock_ts, where, width=7)
+          if (len<20) true_shift <- custom_shift_type(stock_ts, where$as_pos[i], width = 2)
+          else true_shift <- custom_shift_type(stock_ts, where$as_pos[i], width = 7)
+
+        } else {true_shift <- 0}
+
+        if (abs(where$dt_val[i])>asd_thr & true_shift == 1){
+
+          asd_out["loc_brk"] <- paste0(asd_out["loc_brk"],";",
+                                       c(where$as_pos[i], NA)[1] + start(stock_ts)[1] - 1)
+          asd_out["n_brk"] <- asd_out["n_brk"] + 1
+        }
+
+
+      } else {
+
+        if (abs(where$dt_val[i])>asd_thr){
+
+          asd_out["loc_brk"] <- paste0(asd_out["loc_brk"],";",
+                                       c(where$as_pos[i], NA)[1] + start(stock_ts)[1] - 1)
+          asd_out["n_brk"] <- asd_out["n_brk"] + 1
+        }
+
+      }
+    }
+  }
+
+  asd_out["loc_brk"] <- sub("NA;", "", asd_out["loc_brk"])
+
+  return(list("df" = asd_out, "detect" = detect))
+
+}
+
+
+
+#' Breakpoints analysis using 'chngpt' package (Fong et al. 2017)
+#'
+#' @param ts timeseries to analyse as 'ts' object
+#'
+#' @return one-row data frame with info about potentially detected breakpoints
+#' @export
+
+chg_fct <- function(ts){
+
+  Y <- tail(names(ts),1)
+
+  chg <- chngpt::chngptm(formula.1 = as.formula(paste(Y,"~1")),
+                         formula.2 = ~year,
+                         type="step", family="gaussian", data=ts)
+
+  pred_chg <- data.frame(year = ts$year,
+                         bp = chg$best.fit$fitted.values)
+
+  nrmse <- sqrt(sum(residuals(chg)^2)/length(ts$Y))/sd(ts$Y)
+
+  chg_out <- data.frame(abbr = "chg",
+                        mtd = "chgnpt",
+                        n_brk = 1,
+                        loc_brk = chg$chngpt,
+                        aic = MuMIn::AICc(chg),
+                        trend = ifelse(pred_chg$bp[1] >
+                                         pred_chg$bp[length(pred_chg$bp)],
+                                       "decrease", "increase"),
+                        mag = pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1],
+                        SDbef = ts %>%
+                          dplyr::filter(year<=chg$chngpt) %>%
+                          dplyr::pull(Y) %>%
+                          sd(),
+                        SDaft = ts %>%
+                          dplyr::filter(year>=chg$chngpt) %>%
+                          dplyr::pull(Y) %>%
+                          sd(),
+                        nrmse = nrmse
   )
+  chg_out <- chg_out %>% mutate(step_size = mag/((SDbef+SDaft)/2))
 
-  saveRDS(scl_simu_list, paste0("data/03_simulations/all_simu_", name, "_scl.rds"))
-
-  return(scl_simu_list)
-
-}
-
-# Scale by mean simulated time series
-
-scale_mean_simu <- function(simu_list, name){
-
-  scale_mean_simu_list <- lapply(simu_list,
-                           function(x) x %>%
-                             dplyr::group_by(scen, iter) %>%
-                             dplyr::mutate(TB = TB/mean(TB)) %>%
-                             dplyr::ungroup()
-  )
-
-  saveRDS(scale_mean_simu_list, paste0("data/03_simulations/all_simu_", name, "_mnscl.rds"))
-
-  return(scale_mean_simu_list)
+  return(list("chg_out" = chg_out, "pred_chg" = pred_chg))
 
 }
 
 
-# Normalize simulated time series (rescale min-max)
+#' Multiple breakpoints analysis
+#'
+#' @param ts timeseries to analyses as data frame (2 columns: year, Y)
+#' @param abr_mtd vector with abbreviation(s) corresponding to the breakpoints method(s) to use
+#' @param asd_thr numeric threshold for as_detect method
+#' @param asd_chk logical paramater for check_true_shift in asd_fct
+#' @param lowwl lowest window length used in algorithm (default 5)
+#' @param highwl highest window length used in algorithm.
+#' If 'default' then highwl is set to 1/3 of the length of timeseries.
+#' @param mad_thr threshold of anomalous change in number
+#' of median absolute deviations (default 3)
+#' @param mad_cst correction factor for asymptotic normal consistency
+#'
+#' @return list of three objects:
+#' - data frame with info about potentially detected breakpoints
+#' - two lists of three data frames for bpm and bpt
+#' - list of EnvCpt output
+#'
+#' @export
 
-norm_simu <- function(simu_list, name){
+shifts <- function(ts, abr_mtd, asd_thr, asd_chk,
+                   lowwl, highwl, mad_thr, mad_cst){
 
-  norm_simu_list <- lapply(simu_list,
-                           function(x) x %>%
-                             dplyr::group_by(scen, iter) %>%
-                             dplyr::mutate(
-                               # TB = ifelse(expected_class!="no_change", (TB-min(TB))/(max(TB)-min(TB)), TB)
-                               TB = (TB-min(TB))/(max(TB)-min(TB))
-                             ) %>%
-                             dplyr::ungroup()
-                           )
+  stock_ts <- ts %>%
+    dplyr::pull(ncol(ts)) %>%
+    ts(start=ts$year[1], end=tail(ts$year,1))
 
-  saveRDS(norm_simu_list, paste0("data/03_simulations/all_simu_", name, "_nrm.rds"))
-
-  return(norm_simu_list)
-
-}
-
-
-# Standardize simulated time series
-
-strd_simu <- function(simu_list, name){
-
-  strd_simu_list <- lapply(simu_list_nonstd,
-                          function(x) x %>%
-                            dplyr::group_by(scen, iter) %>%
-                            dplyr::mutate(
-                              # TB = ifelse(expected_class!="no_change", (TB-mean(TB))/sd(TB)+min(TB), TB)
-                              TB = (TB-mean(TB))/sd(TB),
-                              TB = TB - min(TB)
-                            ) %>%
-                            dplyr::ungroup()
-  )
-
-  saveRDS(strd_simu_list, paste0("data/03_simulations/all_simu_", name, "_std.rds"))
-
-  return(strd_simu_list)
-
-}
+  res_table <- data.frame()
 
 
+  if ("asd" %in% abr_mtd){
 
+    asd_out <- asd_fct(stock_ts, asd_thr, check_true_shift=asd_chk,
+                       lowwl, highwl=highwl, mad_thr, mad_cst)
+    res_table <- rbind(res_table, asd_out$df)
+  }
 
+  if ("chg" %in% abr_mtd){
 
-# List of stocks with time series available for classification:
+    chg_outlist <- chg_fct(ts)
+    chg_out <- chg_outlist$chg_out
 
-list_available <- function(ts_type, min_len) {
+    res_table <- rbind(res_table, chg_out)
+  }
 
-  ts <- timeseries_values_views %>%
-    dplyr::group_by(stockid) %>%
-    dplyr::select(stockid, year, tidyselect::all_of(ts_type)) %>%
-    na.omit(ts_type) %>%
-    dplyr::summarise(first=min(year),
-                     last=max(year)) %>%
-    dplyr::mutate(length = last-first+1) %>%
-    dplyr::mutate(scen = paste(ts_type, stockid, sep="_")) %>%
-    dplyr::relocate(scen) %>%
-    dplyr::ungroup() %>%
-    dplyr::left_join(metadata, by="stockid") %>%
-    dplyr::select(-c(FisheryType, taxGroup)) %>%
-    dplyr::left_join(taxonomy, by="scientificname") %>%
-    dplyr::left_join(gaps_info(ts_type) %>% dplyr::select(stockid, gaps, missing), by="stockid") %>%
-    dplyr::mutate(gaps = ifelse(is.na(gaps), FALSE, TRUE)) %>%
-    dplyr::filter(length>=min_len & !gaps)
+  if ("asd" %in% abr_mtd & "chg" %in% abr_mtd) {
 
-  return(ts)
-}
+    return(list("res_table" = res_table, "chg_outlist" = chg_outlist,
+                "asd_detect" = asd_out$detect))
 
+  } else if ("chg" %in% abr_mtd) {
 
-# List of stocks with time series available for classification specifying start and end:
+    return(list("res_table" = res_table, "chg_outlist" = chg_outlist))
 
-list_available_lim <- function(ts_type, min_len, min_y, max_y) {
+  } else {
 
-  ts <- timeseries_values_views %>%
-    dplyr::group_by(stockid) %>%
-    dplyr::select(stockid, year, tidyselect::all_of(ts_type)) %>%
-    na.omit(ts_type) %>%
-    dplyr::summarise(first=min(year),
-                     last=max(year)) %>%
-    dplyr::mutate(length = last-first+1) %>%
-    dplyr::mutate(scen = paste(ts_type, stockid, sep="_")) %>%
-    dplyr::relocate(scen) %>%
-    dplyr::ungroup() %>%
-    dplyr::left_join(metadata, by="stockid") %>%
-    dplyr::select(-c(FisheryType, taxGroup)) %>%
-    dplyr::left_join(taxonomy, by="scientificname") %>%
-    dplyr::left_join(gaps_info(ts_type) %>% dplyr::select(stockid, gaps, missing), by="stockid") %>%
-    dplyr::mutate(gaps = ifelse(is.na(gaps), FALSE, TRUE)) %>%
-    dplyr::filter(length>=min_len & !gaps & first<=min_y & last>=max_y)
+    return(list("res_table" = res_table))
 
-  return(ts)
+  }
 }
 
 
 
 
-# Trajectory classification -----------------------------------------------
-
-#' #' Trajectory classification (from Rigal et al. 2020)
-#' #'
-#' #' @param Y vector of the time series values
-#' #' @param X vector of the timesteps
-#' #' @param dataset two-column dataframe with timesteps and values of the time series
-#' #' @param interval_size
-#' #'
-#' #' @return a single-row data frame with infos about the trajectory
-#' #' @export
-#'
-#' class_trajectory <- function (Y = NULL, X = NULL, dataset = NULL, interval_size = 0.5)
-#' {
-#'   if (is.null(X) == TRUE & is.null(Y) == TRUE & is.null(dataset) == TRUE){
-#'     stop("either 'dataset' or at least 'Y' and 'X' must be specified")
-#'   }
-#'   if (is.null(X) == TRUE & is.null(Y) == TRUE) {
-#'     Y <- dataset[,2]
-#'     X <- dataset[,1]
-#'   }else{
-#'     if (class(Y) == "character" & class(X) == "character") {
-#'       if (is.null(dataset) == TRUE) {
-#'         stop("if 'Y' and 'X' are character, 'dataset' must exist")
-#'       }else{
-#'         Y <- dataset[, Y]
-#'         X <- dataset[, X]
-#'       }
-#'     }else{
-#'       if (!(class(Y) %in% c("numeric","integer")) == TRUE & !(class(X) %in% c("numeric","integer")) == TRUE) {stop("'Y' and 'X' must be either characters or vector but 'class' must be similar")}
-#'     }
-#'   }
-#'
-#'   data <- data.frame(cbind(Y, X))
-#'   data <- data[order(data$X),] # ordering the X values
-#'
-#'   if (length(X)<4){
-#'     stop("time series length must be at least 4")
-#'   }
-#'
-#'   Y <- data$Y
-#'   X <- data$X
-#'
-#'   linear.model <- lm(Y~X)
-#'   aic_lin <- AIC(linear.model)
-#'
-#'   orthogonal_polynomial <- lm(Y~poly(X,2, raw=F))
-#'   aic_pol <- AIC(orthogonal_polynomial)
-#'
-#'   # After getting Y = gamma*chi + delta*X' + epsilon with orthogonal polynomial
-#'   # we have to perform a variable change to obtain relevant values in the X interval
-#'   # for first_order_coefficient, second_order_coefficient and intercept,
-#'   # knowing that X'= alpha*X + beta
-#'   # and chi = eta*X'^2 + theta
-#'
-#'   gammab  <-  orthogonal_polynomial$coefficients[3]
-#'   delta  <-  orthogonal_polynomial$coefficients[2]
-#'   epsilon  <-  orthogonal_polynomial$coefficients[1]
-#'
-#'   alpha  <-  lm(orthogonal_polynomial$model[, 2][, 1]~X)$coef[2]
-#'   beta  <-  lm(orthogonal_polynomial$model[, 2][, 1]~X)$coef[1]
-#'
-#'   eta  <-  1/lm((orthogonal_polynomial$model[, 2][, 1])^2~orthogonal_polynomial$model[, 2][, 2])$coef[2]
-#'   theta  <-  (-lm((orthogonal_polynomial$model[, 2][, 1])^2~orthogonal_polynomial$model[, 2][, 2])$coef[1])*eta
-#'
-#'   Y2<-Y*(max(X)-min(X))/(max(Y)-min(Y)) # p2 and p3 are relevant when Y and X amplitudes are equivalent,
-#'   # in particular when studying scaled-to-1 indices, Y and X amplitudes
-#'   # may be very different, so we scaled the amplitudes to calculate p2 and p3
-#'   polynomial_orthonormal_basis<-lm(Y2~poly(X,2, raw=T))$coefficients
-#'
-#'   if(summary(orthogonal_polynomial)$coefficients[3, 4] <= 0.05){  # non linear case
-#'     classification <- data.frame(first_order_coefficient = (delta+2*beta*gammab*eta)*alpha,
-#'                                  first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
-#'                                  second_order_coefficient = (alpha^2)*gammab*eta,
-#'                                  second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
-#'                                  strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
-#'                                  intercept = epsilon+beta*delta+(beta^2)*gammab*eta+gammab*theta,
-#'                                  x_m = (X[length(X)]-X[1])/2+X[1],
-#'                                  p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta), # points of interest
-#'                                  p2 = (-polynomial_orthonormal_basis[2]+1)/(2*polynomial_orthonormal_basis[3]),
-#'                                  p3 = (-polynomial_orthonormal_basis[2]-1)/(2*polynomial_orthonormal_basis[3]))
-#'
-#'     aic_max_shape <- aic_pol
-#'
-#'   }else{ # linear case
-#'     classification <- data.frame(first_order_coefficient = delta*alpha,
-#'                                  first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
-#'                                  second_order_coefficient = 0,
-#'                                  second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
-#'                                  strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
-#'                                  intercept = epsilon+delta*beta,
-#'                                  x_m = (X[length(X)]-X[1])/2+X[1],
-#'                                  p1 = NA,
-#'                                  p2 = NA,
-#'                                  p3 = NA)
-#'     aic_max_shape <- aic_lin
-#'
-#'   }
-#'
-#'   classification$r.sq <- summary(orthogonal_polynomial)$adj.r.squared # retrieve the adjusted coefficient of determination
-#'
-#'   # compute the derivative at xm-delta and at xm + delta with delta being half of the input interval size
-#'   derivative  <-  2*(classification$x_m-(X[length(X)]-X[1])*(interval_size/2))*classification$second_order_coefficient+classification$first_order_coefficient
-#'   derivative2  <-  2*(classification$x_m+(X[length(X)]-X[1])*(interval_size/2))*classification$second_order_coefficient+classification$first_order_coefficient
-#'
-#'
-#'   if(sign(derivative) != sign(derivative2)){ # non consistent direction around x_m
-#'     classification$derivative  <-  NA
-#'     classification$intercept_derivative  <-  NA
-#'   }else{ # consistent direction around x_m
-#'     classification$derivative  <-  mean(c(derivative, derivative2))
-#'     classification$intercept_derivative  <-  (classification$second_order_coefficient*classification$x_m^2+classification$first_order_coefficient*classification$x_m+classification$intercept)-classification$x_m*classification$derivative
-#'   }
-#'
-#'   # compute the derivative of the curvature function
-#'   classification$derivated_curvature  <-  -12*(classification$second_order_coefficient^2)*(2*classification$second_order_coefficient*classification$x_m+classification$first_order_coefficient)*(classification$second_order_coefficient/abs(classification$second_order_coefficient))/
-#'     ((1+(2*classification$second_order_coefficient*classification$x_m+classification$first_order_coefficient)^2)^(2.5))
-#'
-#'   if(classification$second_order_pvalue>0.05){classification$derivated_curvature <- NA}
-#'
-#'   classification$direction <- NA # classify the direction
-#'   classification$direction[which(classification$derivative > 0)] <- "increase"
-#'   classification$direction[which(classification$derivative < 0)] <- "decrease"
-#'   classification$direction[which(is.na(classification$derivative))] <- "stable"
-#'   classification$direction[which(as.numeric(classification$first_order_pvalue)>0.05 & as.numeric(classification$second_order_pvalue)>0.05)] <- "stable"
-#'
-#'   classification$acceleration <- NA # classify the acceleration
-#'   classification$acceleration[which(classification$derivated_curvature < 0)] <- "accelerated"
-#'   classification$acceleration[which(classification$derivated_curvature > 0)] <- "decelerated"
-#'   classification$acceleration[which(classification$direction == "stable" &
-#'                                       classification$second_order_coefficient < 0)] <- "concave"
-#'   classification$acceleration[which(classification$direction == "stable" &
-#'                                       classification$second_order_coefficient > 0)] <- "convex"
-#'   classification$acceleration[which(is.na(classification$derivated_curvature))] <- "constant"
-#'
-#'   classification$shape_class <- paste(classification$direction, # give the final classification combining direction and acceleration
-#'                                       classification$acceleration,
-#'                                       sep="_")
-#'
-#'   linear.model.summary <- summary(linear.model) # provide the linear approach results for comparison
-#'
-#'   classification$linear_slope <- linear.model.summary$coefficients[2, 1]
-#'   classification$linear_slope_pvalue <- linear.model.summary$coefficients[2, 4]
-#'   classification$linear_intercept <- linear.model.summary$coefficients[1, 1]
-#'
-#'   classification$first_X_value <- X[1]
-#'   classification$last_X_value <- X[length(X)]
-#'   classification$aic_lin <- aic_lin
-#'   classification$aic_pol <- aic_pol
-#'   classification$aic_max_shape <- aic_max_shape
-#'
-#'   row.names(classification) <- "Y"
-#'
-#'   return(classification)
-#'
-#' }
-
+# IV) Trajectory classification -----------------------------------------------
 
 #' Trajectory classification (from Rigal et al. 2020)
 #'
-#' @param Y vector of the time series values
+#' @param Y vector of the timeseries values
 #' @param X vector of the timesteps
-#' @param dataset two-column dataframe with timesteps and values of the time series
+#' @param dataset two-column dataframe with timesteps and timeseries values
 #' @param interval_size
 #'
-#' @return a two-row data frame with infos about the trajectory (polynomial and linear)
+#' @return two-row data frame with infos about the trajectory
+#' (no change, linear, and polynomial)
+#'
 #' @export
 
-class_trajectory_both <- function (Y = NULL, X = NULL, dataset = NULL, interval_size = 0.5){
+class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
+                                   interval_size = 0.5){
 
   if (is.null(X) == TRUE & is.null(Y) == TRUE & is.null(dataset) == TRUE){
     stop("either 'dataset' or at least 'Y' and 'X' must be specified")
@@ -447,16 +543,19 @@ class_trajectory_both <- function (Y = NULL, X = NULL, dataset = NULL, interval_
   if (is.null(X) == TRUE & is.null(Y) == TRUE) {
     Y <- dataset[,2]
     X <- dataset[,1]
-  }else{
+  } else {
     if (class(Y) == "character" & class(X) == "character") {
       if (is.null(dataset) == TRUE) {
         stop("if 'Y' and 'X' are character, 'dataset' must exist")
-      }else{
+      } else {
         Y <- dataset[, Y]
         X <- dataset[, X]
       }
-    }else{
-      if (!(class(Y) %in% c("numeric","integer")) == TRUE & !(class(X) %in% c("numeric","integer")) == TRUE) {stop("'Y' and 'X' must be either characters or vector but 'class' must be similar")}
+    } else{
+      if (!(class(Y) %in% c("numeric","integer")) == TRUE &
+          !(class(X) %in% c("numeric","integer")) == TRUE) {
+        stop("'Y' and 'X' must be either characters or vector but 'class'
+             must be similar")}
     }
   }
 
@@ -464,34 +563,26 @@ class_trajectory_both <- function (Y = NULL, X = NULL, dataset = NULL, interval_
   data <- data[order(data$X),] # ordering the X values
 
   if (length(X)<4){
-    stop("time series length must be at least 4")
+    stop("timeseries length must be at least 4")
   }
 
   Y <- data$Y
   X <- data$X
 
+  # No change model:
   null.model <- lm(Y~1)
-  # aic_nch <- AIC(null.model) # stats::AIC.default
-  # rsq_nch <- summary(null.model)$adj.r.squared
   nrmse_nch <- sqrt(sum(summary(null.model)$residuals^2)/length(Y))/sd(Y)
   aic_nch <- MuMIn::AICc(null.model)
-  # stats4::logLik(null.model) # (df=2)
 
+  # Linear model:
   linear.model <- lm(Y~X)
-  # aic_lin <- AIC(linear.model)
-  # rsq_lin <- summary(linear.model)$adj.r.squared
   nrmse_lin <- sqrt(sum(summary(linear.model)$residuals^2)/length(Y))/sd(Y)
   aic_lin <- MuMIn::AICc(linear.model)
-  # stats4::logLik(linear.model) # (df=3)
-  # aic_lin <- extractAIC(linear.model)[2]
 
+  # Quadratic model:
   orthogonal_polynomial <- lm(Y~poly(X,2, raw=F))
-  # aic_pol <- AIC(orthogonal_polynomial)
-  # rsq_pol <- summary(orthogonal_polynomial)$adj.r.squared
   nrmse_pol <- sqrt(sum(summary(orthogonal_polynomial)$residuals^2)/length(Y))/sd(Y)
   aic_pol <- MuMIn::AICc(orthogonal_polynomial)
-  # stats4::logLik(orthogonal_polynomial) # (df=4)
-  # aic_pol <- extractAIC(orthogonal_polynomial)[2]
 
   # After getting Y = gamma*chi + delta*X' + epsilon with orthogonal polynomial
   # we have to perform a variable change to obtain relevant values in the X interval
@@ -514,51 +605,54 @@ class_trajectory_both <- function (Y = NULL, X = NULL, dataset = NULL, interval_
   # may be very different, so we scaled the amplitudes to calculate p2 and p3
   polynomial_orthonormal_basis<-lm(Y2~poly(X,2, raw=T))$coefficients
 
-  # non linear case
-  classification <- data.frame(first_order_coefficient = (delta+2*beta*gammab*eta)*alpha,
-                               first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
-                               second_order_coefficient = (alpha^2)*gammab*eta,
-                               second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
-                               strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
-                               intercept = epsilon+beta*delta+(beta^2)*gammab*eta+gammab*theta,
-                               x_m = (X[length(X)]-X[1])/2+X[1],
-                               p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta), # points of interest
-                               p2 = (-polynomial_orthonormal_basis[2]+1)/(2*polynomial_orthonormal_basis[3]),
-                               p3 = (-polynomial_orthonormal_basis[2]-1)/(2*polynomial_orthonormal_basis[3]),
-                               aic = aic_pol,
-                               nrmse = nrmse_pol)
+  # quadratic case:
+  classification <-
+    data.frame(first_order_coefficient = (delta+2*beta*gammab*eta)*alpha,
+               first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
+               second_order_coefficient = (alpha^2)*gammab*eta,
+               second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
+               strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
+               intercept = epsilon+beta*delta+(beta^2)*gammab*eta+gammab*theta,
+               x_m = (X[length(X)]-X[1])/2+X[1],
+               p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta), # points of interest
+               p2 = (-polynomial_orthonormal_basis[2]+1)/(2*polynomial_orthonormal_basis[3]),
+               p3 = (-polynomial_orthonormal_basis[2]-1)/(2*polynomial_orthonormal_basis[3]),
+               aic = aic_pol,
+               nrmse = nrmse_pol)
 
-  # linear case
-  classification[2,] <- data.frame(first_order_coefficient = delta*alpha,
-                                   first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
-                                   second_order_coefficient = 0,
-                                   second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
-                                   strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
-                                   intercept = epsilon+delta*beta,
-                                   x_m = (X[length(X)]-X[1])/2+X[1],
-                                   p1 = NA,
-                                   p2 = NA,
-                                   p3 = NA,
-                                   aic = aic_lin,
-                                   nrmse = nrmse_lin)
+  # linear case:
+  classification[2,] <-
+    data.frame(first_order_coefficient = delta*alpha,
+               first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
+               second_order_coefficient = 0,
+               second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
+               strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
+               intercept = epsilon+delta*beta,
+               x_m = (X[length(X)]-X[1])/2+X[1],
+               p1 = NA,
+               p2 = NA,
+               p3 = NA,
+               aic = aic_lin,
+               nrmse = nrmse_lin)
 
-  # no change case
-  classification[3,] <- data.frame(first_order_coefficient = 0,
-                                   first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
-                                   second_order_coefficient = 0,
-                                   second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
-                                   strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
-                                   intercept = null.model$coefficients,
-                                   x_m = (X[length(X)]-X[1])/2+X[1],
-                                   p1 = NA,
-                                   p2 = NA,
-                                   p3 = NA,
-                                   aic = aic_nch,
-                                   nrmse = nrmse_nch)
+  # no change case:
+  classification[3,] <-
+    data.frame(first_order_coefficient = 0,
+               first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
+               second_order_coefficient = 0,
+               second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
+               strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
+               intercept = null.model$coefficients,
+               x_m = (X[length(X)]-X[1])/2+X[1],
+               p1 = NA,
+               p2 = NA,
+               p3 = NA,
+               aic = aic_nch,
+               nrmse = nrmse_nch)
 
 
   # Significance of the coefficients:
-  if(summary(orthogonal_polynomial)$coefficients[3, 4] <= 0.05){  # non linear case
+  if(summary(orthogonal_polynomial)$coefficients[3, 4] <= 0.05){  # quadratic case
     classification$best_model <- c("best", NA, NA)
   } else if(summary(orthogonal_polynomial)$coefficients[2, 4]<=0.05){ # linear case
     classification$best_model <- c(NA, "best", NA)
@@ -634,20 +728,23 @@ class_trajectory_both <- function (Y = NULL, X = NULL, dataset = NULL, interval_
 
 #' Markov-chain simulations of classification
 #'
-#' @param dataset a data frame ready for analyses
-#' @param niter a number of MC simulations (no resampling done if niter = 1)
-#' @param ref_year reference year, by default equal to the mid year of the interval
-#' @param correction set the reference value to 100 and correct values below 0 before logtransformation
-#' @param fit a character to specify the type of fit ("pol" or "lin") default is best fit
+#' @param dataset data frame ready for analyses
+#' @param niter number of MC simulations (option to run more than one disabled)
+#' @param ref_year reference year (default the middle year of the interval)
+#' @param correction logical, to the reference value to 100 and
+#' correct values below 0 before logtransformation
+#' @param fit character to specify the type of fit
+#' (either "nch", "lin", or "pol", default is best fit)
 #'
-#' @return a data frame with as many rows as iterations
+#' @return data frame with as many rows as iterations
+#'
 #' @export
 
-mc_trend <- function(dataset,         # data
-                     niter,           # number of MC simulations
-                     ref_year=NULL,   # reference year, by default equal to the mid year of the interval
-                     correction=FALSE, # set the reference value to 100 and correct values below 0 before logtransformation
-                     fit=NULL) # specify the type of fit ("pol" or "lin") default is best fit
+mc_trend <- function(dataset,
+                     niter,
+                     ref_year=NULL,
+                     correction=FALSE,
+                     fit=NULL)
 {
 
   b <- data.frame(t(rep(NA, 15)))
@@ -666,9 +763,6 @@ mc_trend <- function(dataset,         # data
                            "best_model",
                            "second_order_pvalue",
                            "nrmse"
-                           # "aic_lin",
-                           # "aic_pol",
-                           # "aic_max_shape"
   )
 
   if(is.null(ref_year)){
@@ -680,41 +774,33 @@ mc_trend <- function(dataset,         # data
     if(ref_value == 1){
       dataset$Y <- 100*dataset$Y # set reference year value to 100
       dataset$Y[which(dataset$Y <= 1)] <- 1 # set values < 1 to 1
-      dataset$Y_SE[which(dataset$Y <= 1)] <- 0 # and their SE to 0
-      dataset$Y_SE <- 100*dataset$Y_SE
     }
+
     if(ref_value!=1 & ref_value!=100){
       if(ref_value>1){
         dataset$Y <- dataset$Y/ref_value
-        dataset$Y_SE <- dataset$Y_SE/ref_value
       }
+
       if(ref_value<1){
         stop("use 'correction = FALSE' when value of the reference year is strictly below 1")
       }
+
       dataset$Y <- 100*dataset$Y
       if(length(which(dataset$Y <= 1))>0){print("caution, low values corrected, if strongly decreasing or increasing trajectory, use respectively  first or last year as referential")}
       dataset$Y[which(dataset$Y <= 1)] <- 1
-      dataset$Y_SE[which(dataset$Y <= 1)] <- 0
-      dataset$Y_SE <- 100*dataset$Y_SE
+
     }
     if(ref_value == 100){
       dataset$Y[which(dataset$Y <= 1)] <- 1
-      dataset$Y_SE[which(dataset$Y <= 1)] <- 0
     }
-
-    dataset$sd <- dataset$Y_SE/dataset$Y # SE of log transformed data
-    dataset$log <- log(dataset$Y) # log transforme Y
-    for(j in 1:nrow(dataset)){
-      if(dataset$sd[j]>(dataset$log[j])){dataset$sd[j] <- (dataset$log[j])} # set SE to value amplitude if SE > value (if not, it leads to huge values when resampling in the next loop)
-    }
+    dataset$log <- log(dataset$Y) # log transform Y
   }
 
   if(correction == FALSE){
     if(min(dataset$Y)<0){
       min_value <- abs(min(dataset$Y))
       dataset$Y <- dataset$Y+min_value
-    }else{min_value <- 0}
-    dataset$sd <- dataset$Y_SE
+    } else {min_value <- 0}
     dataset$log <- dataset$Y
   }
 
@@ -722,17 +808,20 @@ mc_trend <- function(dataset,         # data
 
     if (niter==1){ # no resampling if only one iteration
       a <- dataset$Y
-
-    } else { # simulate Y values from normal distribution (mean= original Y value, sd = original SE)
-      a <- rnorm(nrow(dataset), mean=dataset$log, sd=dataset$sd)
     }
 
     if(correction == TRUE){
-      a <- exp(a)/exp(a[which(dataset$X == ref_year)])*100 # set reference year value to 100 and retransform values if logtranformed
+      # set reference year value to 100 and retransform values if logtranformed
+      a <- exp(a)/exp(a[which(dataset$X == ref_year)])*100
     }else{a <- a-min_value}
 
-    a <- class_trajectory_both(a, dataset$X)
-    best_model <- a %>% dplyr::filter(best_model=="best") %>% rownames() %>% sub("Y_","",.)
+    a <- class_trajectory_mod(a, dataset$X)
+
+    best_model <- a %>%
+      dplyr::filter(best_model=="best") %>%
+      rownames() %>%
+      sub("Y_","",.)
+
     if(is.null(fit)){
       a <- a %>% dplyr::filter(best_model=="best")
     }else if(fit == "nch"){
@@ -750,7 +839,7 @@ mc_trend <- function(dataset,         # data
     b[i, 4] <- a$shape_class
     b[i, 5] <- a$intercept
     if(a$second_order_coefficient!=0){
-      if(findInterval(a$p1,  c(min(dataset$X), max(dataset$X))) == 1){ # record changing point inside time series
+      if(findInterval(a$p1,  c(min(dataset$X), max(dataset$X))) == 1){ # record changing point inside timeseries
         b[i, 6] <- a$p1}else{b[i, 6] <- NA}
       if(findInterval(a$p2,  c(min(dataset$X), max(dataset$X))) == 1){
         b[i, 7] <- a$p2}else{b[i, 7] <- NA}
@@ -780,13 +869,16 @@ mc_trend <- function(dataset,         # data
 
 #' Summary of MC simulations of classification
 #'
-#' @param sets a list of data frame ready for analyses
-#' @param niter a number of MC simulations
-#' @param ref_year reference year, by default equal to the mid year of the interval
-#' @param correction set the reference value to 100 and correct values below 0 before logtransformation
-#' @param fit a character to specify the type of fit ("pol" or "lin") default is best fit
+#' @param sets list of data frame ready for analyses
+#' @param niter number of MC simulations (option to run more than one disabled)
+#' @param ref_year reference year (default the middle year of the interval)
+#' @param correction logical, to the reference value to 100 and
+#' correct values below 0 before logtransformation
+#' @param fit character to specify the type of fit
+#' (either "nch", "lin", or "pol", default is best fit)
 #'
-#' @return a data frame with as many rows as simulations
+#' @return data frame with as many rows as simulations
+#'
 #' @export
 
 res_trend <- function(sets,
@@ -799,7 +891,7 @@ res_trend <- function(sets,
 
   for (i in seq_len(length(sets))){
 
-    if(nrow(sets[[i]])>3 & anyNA(sets[[i]]$Y_SE) == FALSE){
+    if(nrow(sets[[i]])>3){
 
       simulated <- mc_trend(sets[[i]], niter, ref_year=NULL, correction=FALSE, fit)
       simulated <- simulated %>% dplyr::mutate(best_model=as.factor(best_model))
@@ -845,9 +937,6 @@ res_trend <- function(sets,
       aic <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 12]))
       second_order_pvalue <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 14]), na.rm=T)
       nrmse <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 15]))
-      # aic_lin <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 12]))
-      # aic_pol <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 13]))
-      # aic_max_shape <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 14]))
 
     }else{alpha2 <- alpha1 <- sd_alpha1 <- inter <- strd <- p_1 <- sd_p_1 <- p_2 <- sd_p_2 <- p_3 <- sd_p_3 <- max_shape <- slope_p_value <- slope <- slope_sd <- aic <- best_model <- second_order_pvalue <- nrmse <- NA}
 
@@ -877,13 +966,13 @@ res_trend <- function(sets,
 
 #' Summary of breakpoints analyses
 #'
-#' @param sets a list of data frame ready for analyses
-#' @param abr_mtd a vector with abbreviation(s) corresponding to the breakpoints method(s) to use
-#' ("cp", "cp2", "str_m", "str_t", "ecpt_m", "ecpt_t", "asd", "mcp", "chg")
-#' @param asd_thr a numeric threshold for as_detect method
-#' @param asd_chk a logical paramater for check_true_shift in asd_fct
+#' @param sets list of data frame ready for analyses
+#' @param abr_mtd vector with abbreviation(s) corresponding to the
+#' breakpoints method(s) to use ("asd" and/or "chg")
+#' @param asd_thr numeric threshold for as_detect method
+#' @param asd_chk logical paramater for check_true_shift in asd_fct
 #'
-#' @return a data frame with results of breakpoints analyses
+#' @return data frame with results of breakpoints analyses
 #' @export
 
 abrupt_classif <- function(sets, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst){
@@ -910,16 +999,24 @@ abrupt_classif <- function(sets, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_t
 
 
 
-#' Makes trajectory fitting
+#' Make trajectory fitting
 #'
-#' @param sets a list of data frame ready for analyses
-#' @param abr_mtd a list of abbreviation with breakpoints methods to use (see function abrupt_classif for the list)
-#' @param type a character specifying whether the series come from simulations ("sim") or RAMLDB ("RAM")
-#' @param asd_thr a numeric threshold for as_detect method
-#' @param asd_chk a logical paramater for check_true_shift in asd_fct
-#' @param apriori logical to state whether expected class and trajectories are indicated
+#' @param sets list of data frame ready for analyses
+#' @param abr_mtd vector of abbreviation with breakpoints
+#' methods to use ("asd" and/or "chg")
+#' @param type character specifying whether the series come
+#' from simulations ("sim"), RAMLDB ("RAM"), or other empirical data ("data")
+#' @param asd_thr (asdetect) numeric threshold in detection timeseries
+#' @param asd_chk (asdetect) logical parameter for check_true_shift in asd_fct
+#' @param lowwl (asdetect) lowest window length used in algorithm (default 5)
+#' @param highwl (asdetect) highest window length used in algorithm.
+#' If 'default' then highwl is set to 1/3 of the length of timeseries.
+#' @param mad_thr (asdetect) threshold of anomalous change in number
+#' of median absolute deviations (default 3)
+#' @param mad_cst (asdetect) correction factor for asymptotic normal consistency
+#' @param apriori logical to state whether expected trajectories is indicated
 #'
-#' @return a data frame with the results of different trajectory fitting,
+#' @return data frame with the results of different trajectory fitting,
 #' @export
 
 fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst, apriori){
@@ -933,7 +1030,7 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad
                         last = sapply(sets, function(x) max(x$X), simplify="array"),
                         length = sapply(sets, function(x) nrow(x), simplify="array"))
 
-
+  # Combine all results:
   summ_res <- cbind(
     res_nch %>% dplyr::select(contains("max_shape")|contains("aic")|contains("trend")|contains("nrmse")) %>% dplyr::rename_with(~str_c(., "_nch")),
     res_lin %>% dplyr::select(contains("max_shape")|contains("aic")|contains("trend")|contains("nrmse")) %>% dplyr::rename_with(~str_c(., "_lin")),
@@ -949,7 +1046,7 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad
     lengths
   ) %>% dplyr::rename(signif_model = best_model_pol)
 
-  # Add expectations if known
+  # Add expectations if known:
   if(type=="sim" & apriori){
 
     expected <- do.call(rbind, (lapply(sets, function(x) x[1,]))) %>%
@@ -969,90 +1066,119 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad
 
 
 
-#' Comparison of trajectory fitting
+#' Run timeseries classification
 #'
-#' @param sets a list of data frame ready for analyses
-#' @param str a character specifying the type of structure to use for classification ("aic","2_step","aic_asd")
-#' @param abr_mtd a list of abbreviation with breakpoints methods to use (see function abrupt_classif for the list)
-#' @param type a character specifying whether the series come from simulations ("sim") or RAMLDB ("RAM")
-#' @param asd_thr a numeric threshold for as_detect method
-#' @param asd_chk a logical paramater for check_true_shift in asd_fct
-#' @param noise_comb
-#' @param showplots logical that indicate whether or not to show plots (slows down classification)
-#' @param save_plot logical, whether to save plots or not
-#' @param save_plot_bis logical, whether to save plot_bis or not
-#' @param apriori logical to state whether expected class and trajectories are indicated
-#' @param run_loo logical to state whether to perform leave-one-out process
-#' @param two_bkps (experimental) logical to state if you look for more than one breakpoint (not fully tested)
-#' @param smooth_signif logical, should significance of the coefficient be taken into account in the selection of best model?
-#' @param outplot logical, last plot in return value?
-#' @param ind_plot character to return the last plot for a given trajectory, either "nch", "lin", "pol", or "abt"
+#' @param sets list of data frame ready for analyses
+#' @param str character indicating whether to use 'asdetect'
+#' breakpoint validation ("aic" or "aic_asd")
+#' @param abr_mtd vector of abbreviation with breakpoints
+#' methods to use ("asd" and/or "chg")
+#' @param type character specifying whether the series come
+#' from simulations ("sim"), RAMLDB ("RAM"), or other empirical data ("data")
+#' @param noise_comb for simulated timeseries, a character indicating
+#' the noise combination used to generate the timeseries
+#' @param apriori logical, whether expected trajectories are indicated
+#' @param run_loo logical, whether to perform leave-one-out process
+#' @param two_bkps logical, if true, looks for more than one breakpoints
+#' @param smooth_signif logical, should significance of the coefficient be taken
+#'  into account in the selection of best model
+#' @param asd_thr (asdetect) numeric threshold in detection timeseries
+#' @param asd_chk (asdetect) logical parameter for check_true_shift in asd_fct
+#' @param lowwl (asdetect) lowest window length used in algorithm (default 5)
+#' @param highwl (asdetect) highest window length used in algorithm.
+#' If 'default' then highwl is set to 1/3 of the length of timeseries.
+#' @param mad_thr (asdetect) threshold of anomalous change in number
+#' of median absolute deviations (default 3)
+#' @param mad_cst (asdetect) correction factor for asymptotic normal consistency
+#' @param edge_lim numeric, minimal breakpoint distance to start or end dates
+#' (default 5 timesteps)
+#' @param congr_brk numeric, maximal acceptable distance between chngpt and
+#' as_detect breaks (default 5 timesteps)
+#' @param showplots logical that indicate whether to show plots
+#' (slows down computation if true)
+#' @param save_plot logical, if plots are shown, whether to save plots
+#' (either the four trajectory fits or one of a given fit)
+#' @param save_plot_bis logical, if plots are shown,whether to save plot_bis
+#' (best fit with asdetect detection curve)
+#' @param outplot logical, last plot in return value
+#' @param ind_plot character to return the last plot for a given trajectory
+#' (either "nch", "lin", "pol", or "abt")
 #' @param detection_plot logical to plot detection plot when abrupt
+#' @param plot_one_in for simulations, to limit the number of plots saved,
+#' the number of timeseries out of which to save the plot (default 10)
 #' @param dirname directory name where to save plots
 #'
-#' @return a data frame with the results of different trajectory fitting,
-#' a three-column data frame with the output of the best fitting model, trajectory, and class,
-#' also plots the different fits
+#' @return list of three to four objects:
+#' - data frame with the results of different trajectory fitting,
+#' - data frame with the output of the best fitting model,
+#' - data frame with detailed results of different trajectory fitting,
+#' - (optional) plot with either the four trajectory fits or one of a given fit
 #' @export
 
-traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
-                       noise_comb=NULL, showplots=FALSE, apriori=FALSE,
-                       run_loo, two_bkps, smooth_signif, outplot=FALSE,
-                       lowwl=5, highwl="default", mad_thr=3, mad_cst=1.4826,
-                       ind_plot=NULL, save_plot=TRUE, edge_lim=5, congr_brk=5,
-                       plot_one_in=10, detection_plot=TRUE, dirname=NULL,
-                       save_plot_bis=TRUE){
+traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
+                       apriori=FALSE, run_loo, two_bkps, smooth_signif,
+                       asd_thr, asd_chk, lowwl=5, highwl="default",
+                       mad_thr=3, mad_cst=1.4826, edge_lim=5, congr_brk=5,
+                       showplots=FALSE, save_plot=TRUE, save_plot_bis=TRUE,
+                       outplot=FALSE, ind_plot=NULL, detection_plot=TRUE,
+                       dirname=NULL, plot_one_in=10){
 
-  ### Original time series
+  ### Original timeseries
 
   # Make trajectory fitting:
-  res <- fit_models(sets$ts, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst, apriori)
+  res <- fit_models(sets$ts, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
+                    mad_thr, mad_cst, apriori)
 
   # Define best trajectory according to decision tree:
-  best_traj <- best_traj_aic(class_res=res, type=type, apriori=apriori, aic_selec=str, smooth_signif=smooth_signif,
+  best_traj <- best_traj_aic(class_res=res, type=type, apriori=apriori,
+                             aic_selec=str, smooth_signif=smooth_signif,
                              edge_lim=edge_lim, congr_brk=congr_brk)
 
   # If looking for two breakpoints:
   if(two_bkps){
 
-    # Keep time series with breakpoints:
+    # Keep timeseries with breakpoints:
     list_brk_ts <- best_traj %>%
       dplyr::filter(traj=="1_breakpoint") %>%
       dplyr::select(simu_id, loc_brk_chg)
 
-    # If some time series have breakpoints:
+    # If some timeseries have breakpoints:
     if (nrow(list_brk_ts) != 0){
 
-    # Split time series (keeping the breakpoint in each):
+    # Split timeseries (keeping the breakpoint in each):
     sets2 <- list()
     for (i in 1:nrow(list_brk_ts)){
 
-      sets2[[paste0(list_brk_ts$simu_id[i],"_1st")]] <- sets$ts[[list_brk_ts$simu_id[i]]] %>%
+      sets2[[paste0(list_brk_ts$simu_id[i],"_1st")]] <-
+        sets$ts[[list_brk_ts$simu_id[i]]] %>%
         dplyr::filter(X <= list_brk_ts$loc_brk_chg[i])
 
-      sets2[[paste0(list_brk_ts$simu_id[i],"_2nd")]] <- sets$ts[[list_brk_ts$simu_id[i]]] %>%
+      sets2[[paste0(list_brk_ts$simu_id[i],"_2nd")]] <-
+        sets$ts[[list_brk_ts$simu_id[i]]] %>%
         dplyr::filter(X >= list_brk_ts$loc_brk_chg[i])
-      # %>% dplyr::mutate(X = 1:nrow(.))
     }
 
-    # Remove too short sub time series:
+    # Remove too short sub timeseries:
     sets2 <- sets2[lapply(sets2, nrow)>=15]
 
-    # If any time series eligible:
+    # If any timeseries eligible:
     if(length(sets2)>0){
 
-      # Fit models of splitted time series:
-      res2 <- fit_models(sets2, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst, apriori)
-      best_traj_split <- best_traj_aic(class_res=res2, type=type, apriori=apriori, aic_selec=str, smooth_signif=smooth_signif,
+      # Fit models of splitted timeseries:
+      res2 <- fit_models(sets2, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
+                         mad_thr, mad_cst, apriori)
+      best_traj_split <- best_traj_aic(class_res=res2, type=type,
+                                       apriori=apriori, aic_selec=str,
+                                       smooth_signif=smooth_signif,
                                        edge_lim=edge_lim, congr_brk=congr_brk)
 
       # Locate auxiliary breakpoints:
       list_brk_ts2 <- best_traj_split %>%
-        dplyr::mutate(part = factor(gsub("^.*_", "", simu_id), levels=c("1st", "2nd")),
+        dplyr::mutate(part = factor(gsub("^.*_", "", simu_id),
+                                    levels=c("1st", "2nd")),
                       simu_id = gsub("_1st|_2nd", "", simu_id)) %>%
         dplyr::filter(traj == "1_breakpoint") %>%
         dplyr::select(simu_id, loc_brk_chg, part) %>%
-        # tidyr::pivot_wider(names_from = part, values_from = loc_brk_chg) %>% # not able to disable drop levels
         tidyr::spread(key = part, value = loc_brk_chg, drop=FALSE) %>%
         dplyr::rename(loc_aux1_chg = "1st",
                       loc_aux2_chg = "2nd")
@@ -1084,22 +1210,28 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
   }
 
 
-  ### Leave-One-Out time series
+  ### Leave-One-Out timeseries
   if (run_loo){
 
-    # Make all leave-one-out time series and name them accordingly:
+    # Make all leave-one-out timeseries and name them accordingly:
     loo <- lapply(sets$ts, function(x) lapply(1:nrow(x), function(k) x[-k,]))
-    for (i in 1:length(loo)) names(loo[[i]]) <- paste0(names(loo)[i], "_", paste0("loo",1:length(loo[[i]])))
+    for (i in 1:length(loo)) names(loo[[i]]) <-
+        paste0(names(loo)[i], "_", paste0("loo", 1:length(loo[[i]])))
 
     # Make trajectory fitting for loo:
-    res_loo <- lapply(loo, function(x) fit_models(x, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst, apriori))
+    res_loo <- lapply(loo, function(x) fit_models(x, abr_mtd, type, asd_thr,
+                                                  asd_chk, lowwl, highwl,
+                                                  mad_thr, mad_cst, apriori))
 
     # Define best trajectory according to decision tree for loo:
-    best_traj_loo <- lapply(res_loo, function(x) best_traj_aic(class_res=x, type=type, apriori=apriori, aic_selec=str, smooth_signif=smooth_signif,
-                                                               edge_lim=edge_lim, congr_brk=congr_brk))
+    best_traj_loo <- lapply(res_loo, function(x)
+      best_traj_aic(class_res=x, type=type, apriori=apriori,
+                    aic_selec=str,smooth_signif=smooth_signif,
+                    edge_lim=edge_lim, congr_brk=congr_brk))
 
-    best_traj_loo <- lapply(1:length(sets$ts), function(i) best_traj_loo[[i]] %>%
-                              dplyr::mutate(X=sets$ts[[i]]$X))
+    best_traj_loo <- lapply(1:length(sets$ts), function(i)
+      best_traj_loo[[i]] %>%
+        dplyr::mutate(X=sets$ts[[i]]$X))
 
     # LOO frequencies for class:
     loo_class <- do.call("rbind",  lapply(1:length(sets$ts), function(i) {
@@ -1125,7 +1257,7 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
 
   }
 
-  # store asd parameters
+  # store asd parameters:
   if (str == "aic_asd") best_traj <- best_traj %>%
       dplyr::mutate(asd_thr=asd_thr,
                     lowwl=lowwl,
@@ -1137,11 +1269,21 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
 
     if (!run_loo) best_traj_loo <- NULL
 
-    ## Make plots
-    plots_traj_nch <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_nch, best_traj, plot_class="no_change", best_traj_loo=best_traj_loo)
-    plots_traj_lin <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_lin, best_traj, plot_class="linear", best_traj_loo=best_traj_loo)
-    plots_traj_pol <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_pol, best_traj, plot_class="quadratic", best_traj_loo=best_traj_loo)
-    plots_traj_chg <- plots_traj_abt <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_abt, best_traj, plot_class="abrupt", asd_thr, best_traj_loo=best_traj_loo, detection_plot=detection_plot)
+    ## Make plots:
+    plots_traj_nch <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_nch,
+                                          best_traj, plot_class="no_change",
+                                          best_traj_loo=best_traj_loo)
+    plots_traj_lin <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_lin,
+                                          best_traj, plot_class="linear",
+                                          best_traj_loo=best_traj_loo)
+    plots_traj_pol <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_pol,
+                                          best_traj, plot_class="quadratic",
+                                          best_traj_loo=best_traj_loo)
+    plots_traj_chg <- plots_traj_abt <-
+      plot_traj_multi_abt(sets, rslt=res$res_fit$res_abt, best_traj,
+                          plot_class="abrupt", asd_thr,
+                          best_traj_loo=best_traj_loo,
+                          detection_plot=detection_plot)
 
     if(!is.null(ind_plot)){
       if(ind_plot=="best"){
@@ -1157,30 +1299,42 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
     for (i in 1:nrow(res$summ_res)){
 
 
-      if(str=="aic_asd") class_plot <- cowplot::plot_grid(plots_traj_nch[[i]], plots_traj_lin[[i]],
-                                                          plots_traj_pol[[i]], plots_traj_abt$plots[[i]],
-                                                          nrow=2, ncol=2, align = 'h')
-      if(str=="aic") class_plot <- cowplot::plot_grid(plots_traj_nch[[i]], plots_traj_lin[[i]],
-                                                      plots_traj_pol[[i]], plots_traj_abt[[i]],
-                                                      nrow=2, ncol=2, align = 'h')
+      if(str=="aic_asd") class_plot <-
+          cowplot::plot_grid(plots_traj_nch[[i]], plots_traj_lin[[i]],
+                             plots_traj_pol[[i]], plots_traj_abt$plots[[i]],
+                             nrow=2, ncol=2, align = 'h')
+      if(str=="aic") class_plot <-
+          cowplot::plot_grid(plots_traj_nch[[i]], plots_traj_lin[[i]],
+                             plots_traj_pol[[i]], plots_traj_abt[[i]],
+                             nrow=2, ncol=2, align = 'h')
 
-      if(str=="aic_asd") endname <- paste0("_",str,"_coef",smooth_signif,"asd_thr",asd_thr,"l",lowwl, "h", highwl,"mad", mad_thr,".png")
+      if(str=="aic_asd") endname <- paste0("_", str, "_coef", smooth_signif,
+                                           "asd_thr", asd_thr, "l",lowwl, "h",
+                                           highwl, "mad", mad_thr,".png")
       if(str=="aic") endname <- paste0("_",str,"_coef",smooth_signif,".png")
 
       if(type=="sim" & save_plot & i%%plot_one_in==0){
 
-        png(filename = paste0(dirname,
-                              sets$ts[[i]]$expected_class[1],"/", paste(head(stringr::str_split(names(sets$ts)[i],"_")[[1]],-1), collapse="_"),"_",
-                              noise_comb,"_", gsub("^.*_", "", names(sets$ts)[i]),"__", endname), width=8, height=6, units="in", res=300)
+        png(filename =
+              paste0(dirname,
+                     sets$ts[[i]]$expected_class[1],"/",
+                     paste(head(stringr::str_split(
+                       names(sets$ts)[i],"_")[[1]],-1), collapse="_"),"_",
+                     noise_comb,"_", gsub("^.*_", "", names(sets$ts)[i]),"__",
+                     endname), width=8, height=6, units="in", res=300)
         print(class_plot)
         dev.off()
 
 
         if(str=="aic_asd" & save_plot_bis){
 
-          png(filename = paste0(dirname,
-                                sets$ts[[i]]$expected_class[1],"/abr_", paste(head(stringr::str_split(names(sets$ts)[i],"_")[[1]],-1), collapse="_"),"_",
-                                noise_comb,"_", gsub("^.*_", "", names(sets$ts)[i]), endname), width=6, height=6, units="in", res=300)
+          png(filename =
+                paste0(dirname,
+                       sets$ts[[i]]$expected_class[1],"/abr_",
+                       paste(head(stringr::str_split(
+                         names(sets$ts)[i],"_")[[1]],-1), collapse="_"),"_",
+                       noise_comb,"_", gsub("^.*_", "", names(sets$ts)[i]),
+                       endname), width=6, height=6, units="in", res=300)
           print(plots_traj_abt$plot_bis[[i]])
           dev.off()
         }
@@ -1190,12 +1344,14 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
       if (type=="RAM" & save_plot){
 
         class_plot <- class_plot +
-          patchwork::plot_annotation(sub("_iter01","",names(sets$ts)[i]) %>% sub("_"," ",.),
-                                     theme = theme(plot.title = element_text(hjust = 0.5))
-                                     )
+          patchwork::plot_annotation(sub("_iter01", "", names(sets$ts)[i]) %>%
+                                       sub("_"," ",.),
+                                     theme = theme(plot.title =
+                                                     element_text(hjust = 0.5)))
 
         png(filename = paste0(dirname,
-                              sub("_iter01","",names(sets$ts)[i]), endname), width=8, height=6, units="in", res=300)
+                              sub("_iter01","",names(sets$ts)[i]), endname),
+            width=8, height=6, units="in", res=300)
         print(class_plot)
         dev.off()
 
@@ -1203,7 +1359,8 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
         if(str=="aic_asd" & save_plot_bis){
 
           png(filename = paste0(dirname,"/abr_",
-                                sub("_iter01","",names(sets$ts)[i]), endname), width=6, height=6, units="in", res=300)
+                                sub("_iter01","",names(sets$ts)[i]), endname),
+              width=6, height=6, units="in", res=300)
           print(plots_traj_abt$plot_bis[[i]])
           dev.off()
           }
@@ -1212,18 +1369,23 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
       if (type=="data" & save_plot){
 
         class_plot <- class_plot +
-          patchwork::plot_annotation(sub("_iter01","",names(sets$ts)[i]) %>% sub("_"," ",.),
-                                     theme = theme(plot.title = element_text(hjust = 0.5))
+          patchwork::plot_annotation(sub("_iter01","",names(sets$ts)[i]) %>%
+                                       sub("_"," ",.),
+                                     theme = theme(plot.title =
+                                                     element_text(hjust = 0.5))
           )
 
-        png(filename = paste0(dirname,sub("_iter01","",names(sets$ts)[i]), endname),
+        png(filename = paste0(dirname,
+                              sub("_iter01", "", names(sets$ts)[i]), endname),
             width=8, height=6, units="in", res=300)
         print(class_plot)
         dev.off()
 
         if(str=="aic_asd" & save_plot_bis){
 
-          png(filename = paste0(dirname,"/abr_",sub("_iter01","",names(sets$ts)[i]), endname),
+          png(filename = paste0(dirname,
+                                "/abr_", sub("_iter01", "", names(sets$ts)[i]),
+                                endname),
               width=6, height=6, units="in", res=300)
           print(plots_traj_abt$plot_bis[[i]])
           dev.off()
@@ -1245,7 +1407,7 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
       return(list("res"=res$res, "best_traj"=best_traj,
                   "res_detail"=res$res_fit, "class_plot"=class_plot))
     }
-  }
+  } # If no plot to include in the output (lighter output):
 
   return(list("res"=res$res, "best_traj"=best_traj,
               "res_detail"=res$res_fit))
@@ -1254,22 +1416,27 @@ traj_class <- function(sets, str, abr_mtd, asd_chk, type="sim", asd_thr,
 
 
 
-
 #' Determine best trajectory based on AIC comparisons
 #'
-#' @param class_res a dataframe with results from the different classifications
-#' @param type a character specifying whether the series come from simulations ("sim") or RAMLDB ("RAM")
-#' @param apriori logical to state whether expected class and trajectories are indicated
-#' @param aic_selec a character specifying whether the best trajectory is the lowest ("min") or consider simplest model with delta AIC < 2 ("2units")
-#' @param smooth_signif logical, should significance of the coefficient be taken into account in the selection of best model?
+#' @param class_res data frame with results from the different classifications
+#' @param type character specifying whether the series come
+#' from simulations ("sim"), RAMLDB ("RAM"), or other empirical data ("data")
+#' @param apriori logical, whether expected trajectories are indicated
+#' @param aic_selec character specifying whether the best trajectory is the lowest ("min") or consider simplest model with delta AIC < 2 ("2units")
+#' @param smooth_signif logical, should significance of the coefficient be taken
+#'  into account in the selection of best model
 #' @param edge_lim numeric, minimal breakpoint distance to start or end dates
-#' @param congr_brk numeric, maximal acceptable distance between chngpt and as_detect breaks
+#' (default 5 timesteps)
+#' @param congr_brk numeric, maximal acceptable distance between chngpt and
+#' as_detect breaks (default 5 timesteps)
 #'
 #'
-#' @return a data frame with the output of the best fitting model, trajectory, and class
+#' @return data frame with the output of the best fitting model, trajectory, and class
+#'
 #' @export
 
-best_traj_aic <- function(class_res, type, apriori, aic_selec, smooth_signif, edge_lim, congr_brk){
+best_traj_aic <- function(class_res, type, apriori, aic_selec,
+                          smooth_signif, edge_lim, congr_brk){
 
   traj_lvl <- c("stable_constant","increase_constant","decrease_constant",
                 "stable_concave","stable_convex","decrease_accelerated",
@@ -1513,245 +1680,74 @@ best_traj_aic <- function(class_res, type, apriori, aic_selec, smooth_signif, ed
 
 # Wrapper functions -------------------------------------------------------
 
-#' Run classification for all time series of a given type
+
+#' Run timeseries classification for a given noise combination (for simulations)
 #'
-#' @param ts_type a type of empirical time series (TCbest, TBbest, SProd...)
-#' @param min_len integer, the minimal length of time series to include (default 20 time points)
-#' @param str
-#' @param normalize logical, whether or not to normalize by setting maximal value to one
-#' @param showplots logical that indicate whether or not to show plots (slows down classification)
+#' @param simu_list list of simulation data frames for each noise combination
+#' @param str character specifying the type of structure to use
+#' for classification ("aic","aic_asd")
+#' @param asd_thr numeric threshold for as_detect method
 #' @param run_loo logical to state whether to perform leave-one-out process
+#' @param i integer to indicate the noise combination (to run in parallel)
 #'
-#' @return a data frame with the results of different trajectory fitting,
-#' a three-column data frame with the output of the best fitting model, trajectory, and class,
-#' also plots the different fits
+#' @return a list two objects:
+#' - list with results of different trajectory fitting and best model,
+#' - list of confusion matrices considering trajectories and classes
+#'
 #' @export
 
-run_classif_RAM <- function(ts_type, min_len=20, str, asd_thr, normalize, showplots=TRUE, run_loo, two_bkps, smooth_signif){
+classif_noise_comb <- function(simu_list, str, run_loo, asd_thr, i){
 
-  # List of stocks with time series available for classification:
-  # stocks_avail <- list_available(ts_type=ts_type, min_len=min_len)
-  stocks_avail <- list_available(ts_type=ts_type, min_len=min_len)
+  # Define the noise combination:
+  print(paste0("noise combination: ",i,"/",length(simu_list)))
+  noise_comb <- names(simu_list)[i]
 
-  # Classify for all time series of this type:
-  traj_ts <- data.frame()
-  outlist <- list()
+  # Reshape the data:
+  sets <- prep_data(df=simu_list[[i]], thr=NULL, type="sim", apriori=TRUE)
 
-  thr <- NULL
-  if(ts_type %in% c("TCbest","TBbest","R")) thr <- 0
+  # Define the breakpoint algorithms used:
+  if(str == "aic") abr_mtd <- c("chg")
+  if(str == "aic_asd") abr_mtd <- c("chg", "asd")
 
-  for (i in 1:nrow(stocks_avail)){
+  # Run the classification:
+  trajs <- traj_class(sets, str=str, abr_mtd=abr_mtd, asd_thr=asd_thr, asd_chk=FALSE,
+                      type="sim", noise_comb=noise_comb, smooth_signif=TRUE,
+                      showplots=FALSE, apriori=TRUE, run_loo=run_loo, two_bkps = TRUE,
+                      lowwl=5, highwl="default", mad_thr=3, mad_cst=1.4826,
+                      edge_lim=5, congr_brk=5, plot_one_in=10)
 
-    set <- extract_RAM(stocks_avail$stockid[i], ts_type) %>%
-      prep_data(thr=thr, type="RAM", apriori=FALSE)
+  # Make the confusion matrices:
+  conf_mat <- make_conf_mat(trajs$best_traj)
 
-    # scale by average
-    if(ts_type == "SProd"){
-
-      set_TB <- extract_RAM(stocks_avail$stockid[i], "TBbest") %>%
-        prep_data(thr=thr, type="RAM", apriori=FALSE)
-
-      mean_TB <- set_TB$ts[[1]]$Y %>% mean()
-
-      set$ts[[1]] <- set$ts[[1]] %>%
-        dplyr::mutate(Y_SE = Y_SE/mean_TB, # Y_SE not used
-                      Y = Y/mean_TB)
-
-    } else {
-
-      set$ts[[1]] <- set$ts[[1]] %>%
-        dplyr::mutate(Y_SE = Y_SE/mean(Y), # Y_SE not used
-                      Y = Y/mean(Y))
-    }
-
-    set_length <- nrow(set$ts[[1]])
-
-    if (normalize){
-
-      # Normalization
-      # set$ts[[1]] <- set$ts[[1]] %>%
-      #   dplyr::mutate(Y_SE = Y_SE/max(Y)*100,
-      #                 Y = Y/max(Y)*100)
-
-      # Standardization
-      set$ts[[1]] <- set$ts[[1]] %>%
-        dplyr::mutate(Y_SE = Y_SE/mean(Y),
-                      Y = (Y-mean(Y))/sd(Y))
-    }
-
-    if(str == "aic") abr_mtd <- c("chg")
-    if(str == "aic_asd") abr_mtd <- c("chg", "asd")
-
-    trajs <- traj_class(sets=set, str=str, abr_mtd=abr_mtd, asd_thr=asd_thr, asd_chk=FALSE,
-                        type="RAM", showplots=showplots, apriori=FALSE, run_loo=run_loo,
-                        two_bkps=two_bkps, smooth_signif=smooth_signif,
-                        lowwl=5, highwl="default", mad_thr=3,
-                        edge_lim=0, congr_brk=5)
-
-
-    # Add linear slope, breakpoints location, magnitude:
-    trajs$best_traj <- trajs$best_traj %>%
-      dplyr::mutate(slope = trajs$res_detail$res_lin$slope
-                    # ,
-                    # length_diff = set_length-stocks_avail[i,]$length
-                    # loc_brk_chg = ifelse(trajs$best_traj$class=="abrupt",
-                    #                      trajs$res_detail$res_abt$abt_res$chg$loc_brk, NA),
-                    # loc_brk_asd = ifelse(trajs$best_traj$class=="abrupt" & str == "aic_asd",
-                    #                      trajs$res_detail$res_abt$abt_res$asd$loc_brk, NA),
-                    # diff_loc = ifelse(is.na(loc_brk_chg)|is.na(loc_brk_asd), NA, diff_loc),
-                    # mag_brk_chg = ifelse(trajs$best_traj$class=="abrupt",
-                    #                      trajs$res_detail$res_abt$abt_res$chg$mag, NA),
-                    # stepsize_brk_chg = ifelse(trajs$best_traj$class=="abrupt",
-                    #                           trajs$res_detail$res_abt$abt_res$chg$step_size, NA)
-      )
-
-    traj_ts <- traj_ts %>% dplyr::bind_rows(trajs$best_traj)
-    outlist[[stocks_avail$stockid[i]]] <- trajs
-
-    if (i%%10 == 0) print(paste0(i,"/",nrow(stocks_avail)))
-
-  }
-
-  traj_ts_full <- traj_ts %>%
-    dplyr::mutate(stockid = simu_id %>%
-                    sub("_iter01","", .) %>%
-                    sub(paste0(ts_type,"_"),"", .),
-                  ts_type = sub("_.*", "", simu_id)) %>%
-    dplyr::left_join(stocks_avail, by="stockid")
-
-  saveRDS(outlist, paste0("res/04_RAM_class/outlist_",ts_type,"_",str,"_coeff",smooth_signif,".rds"))
-  saveRDS(traj_ts_full, paste0("res/04_RAM_class/traj_",ts_type,"_",str,"_coeff",smooth_signif,".rds"))
-
-  return(return(list("traj_ts_full"=traj_ts_full, "outlist"=outlist)))
-
-}
-
-
-#' Run classification for all time series of a given type cutting at start and end
-#'
-#' @param ts_type a type of empirical time series (TCbest, TBbest, SProd...)
-#' @param min_len integer, the minimal length of time series to include (default 20 time points)
-#' @param str
-#' @param normalize logical, whether or not to normalize by setting maximal value to one
-#' @param showplots logical that indicate whether or not to show plots (slows down classification)
-#' @param run_loo logical to state whether to perform leave-one-out process
-#' @param min_y start year
-#' @param max_y end year
-#'
-#' @return a data frame with the results of different trajectory fitting,
-#' a three-column data frame with the output of the best fitting model, trajectory, and class,
-#' also plots the different fits
-#' @export
-
-run_classif_RAM_lim <- function(ts_type, min_len=20, str, asd_thr, normalize, showplots=TRUE, run_loo, two_bkps, smooth_signif, min_y, max_y){
-
-  # List of stocks with time series available for classification:
-  # stocks_avail <- list_available(ts_type=ts_type, min_len=min_len)
-  stocks_avail <- list_available_lim(ts_type=ts_type, min_len=min_len, min_y=min_y, max_y=max_y)
-
-  # Classify for all time series of this type:
-  traj_ts <- data.frame()
-  outlist <- list()
-
-  thr <- NULL
-  if(ts_type %in% c("TCbest","TBbest")) thr <- 0
-
-  for (i in 1:nrow(stocks_avail)){
-
-    set <- extract_RAM_lim(stocks_avail$stockid[i], ts_type, min_y=min_y, max_y=max_y) %>%
-      prep_data(thr=thr, type="RAM", apriori=FALSE)
-
-    # scale by average
-    if(ts_type == "SProd"){
-
-      set_TB <- extract_RAM_lim(stocks_avail$stockid[i], "TBbest", min_y=min_y, max_y=max_y) %>%
-        prep_data(thr=thr, type="RAM", apriori=FALSE)
-
-      mean_TB <- set_TB$ts[[1]]$Y %>% mean()
-
-      set$ts[[1]] <- set$ts[[1]] %>%
-        dplyr::mutate(Y_SE = Y_SE/mean_TB, # Y_SE not used
-                      Y = Y/mean_TB)
-
-    } else {
-
-      set$ts[[1]] <- set$ts[[1]] %>%
-        dplyr::mutate(Y_SE = Y_SE/mean(Y), # Y_SE not used
-                      Y = Y/mean(Y))
-    }
-
-    set_length <- nrow(set$ts[[1]])
-
-    if (normalize){
-
-      # Normalization
-      # set$ts[[1]] <- set$ts[[1]] %>%
-      #   dplyr::mutate(Y_SE = Y_SE/max(Y)*100,
-      #                 Y = Y/max(Y)*100)
-
-      # Standardization
-      set$ts[[1]] <- set$ts[[1]] %>%
-        dplyr::mutate(Y_SE = Y_SE/mean(Y),
-                      Y = (Y-mean(Y))/sd(Y))
-    }
-
-    if(str == "aic") abr_mtd <- c("chg")
-    if(str == "aic_asd") abr_mtd <- c("chg", "asd")
-
-    trajs <- traj_class(sets=set, str=str, abr_mtd=abr_mtd, asd_thr=asd_thr, asd_chk=FALSE,
-                        type="RAM", showplots=showplots, apriori=FALSE, run_loo=run_loo,
-                        two_bkps=two_bkps, smooth_signif=smooth_signif,
-                        lowwl=5, highwl="default", mad_thr=3,
-                        edge_lim=0, congr_brk=5)
-
-
-    # Add linear slope, breakpoints location, magnitude:
-    trajs$best_traj <- trajs$best_traj %>%
-      dplyr::mutate(slope = trajs$res_detail$res_lin$slope
-                    # ,
-                    # length_diff = set_length-stocks_avail[i,]$length
-                    # loc_brk_chg = ifelse(trajs$best_traj$class=="abrupt",
-                    #                      trajs$res_detail$res_abt$abt_res$chg$loc_brk, NA),
-                    # loc_brk_asd = ifelse(trajs$best_traj$class=="abrupt" & str == "aic_asd",
-                    #                      trajs$res_detail$res_abt$abt_res$asd$loc_brk, NA),
-                    # diff_loc = ifelse(is.na(loc_brk_chg)|is.na(loc_brk_asd), NA, diff_loc),
-                    # mag_brk_chg = ifelse(trajs$best_traj$class=="abrupt",
-                    #                      trajs$res_detail$res_abt$abt_res$chg$mag, NA),
-                    # stepsize_brk_chg = ifelse(trajs$best_traj$class=="abrupt",
-                    #                           trajs$res_detail$res_abt$abt_res$chg$step_size, NA)
-      )
-
-    traj_ts <- traj_ts %>% dplyr::bind_rows(trajs$best_traj)
-    outlist[[stocks_avail$stockid[i]]] <- trajs
-
-    if (i%%10 == 0) print(paste0(i,"/",nrow(stocks_avail)))
-
-  }
-
-  traj_ts_full <- traj_ts %>%
-    dplyr::mutate(stockid = simu_id %>%
-                    sub("_iter01","", .) %>%
-                    sub(paste0(ts_type,"_"),"", .),
-                  ts_type = sub("_.*", "", simu_id)) %>%
-    dplyr::left_join(stocks_avail, by="stockid")
-
-  saveRDS(outlist, paste0("res/04_RAM_class/outlist_",ts_type,"_",str,"_coeff",smooth_signif,"_",min_y,"-",max_y,".rds"))
-  saveRDS(traj_ts_full, paste0("res/04_RAM_class/traj_",ts_type,"_",str,"_coeff",smooth_signif,"_",min_y,"-",max_y,".rds"))
-
-  return(return(list("traj_ts_full"=traj_ts_full, "outlist"=outlist)))
-
+  return(list("trajs" = trajs,
+              "conf_mat" = conf_mat))
 }
 
 
 
+#' Run timeseries classification (for empirical data)
+#'
+#' @param df_list
+#' @param min_len
+#' @param
+#' @param
+#' @param
+#' @param
+#' @param
+#' @param
+#'
+#' @return
+#' @export
 
-run_classif_data <- function(df_list, min_len=20, str, normalize, showplots=TRUE, run_loo, two_bkps, smooth_signif,
-                             group, time, variable, outplot=FALSE, ind_plot=NULL, dirname=NULL, save_plot=TRUE){
+run_classif_data <- function(df_list, min_len=20, str,
+                             showplots=TRUE, run_loo, two_bkps, smooth_signif,
+                             group, time, variable, outplot=FALSE,
+                             ind_plot=NULL, dirname=NULL, save_plot=TRUE){
 
-  # List of time series meeting the length criterion:
+  # List of timeseries meeting the length criterion:
   df_list <- df_list[df_list %>% lapply(nrow)>min_len]
 
-  # Classify for all time series of this type:
+  # Classify for all timeseries of this type:
   traj_ts <- data.frame()
   outlist <- list()
 
@@ -1767,19 +1763,6 @@ run_classif_data <- function(df_list, min_len=20, str, normalize, showplots=TRUE
       prep_data(thr=thr, type="RAM", apriori=FALSE)
 
     set_length <- nrow(set$ts[[1]])
-
-    if (normalize){
-
-      # Normalization
-      # set$ts[[1]] <- set$ts[[1]] %>%
-      #   dplyr::mutate(Y_SE = Y_SE/max(Y)*100,
-      #                 Y = Y/max(Y)*100)
-
-      # Standardization
-      set$ts[[1]] <- set$ts[[1]] %>%
-        dplyr::mutate(Y_SE = Y_SE/mean(Y),
-                      Y = (Y-mean(Y))/sd(Y))
-    }
 
     if(str == "aic") abr_mtd <- c("chg")
     if(str == "aic_asd") abr_mtd <- c("chg", "asd")
@@ -1813,80 +1796,30 @@ run_classif_data <- function(df_list, min_len=20, str, normalize, showplots=TRUE
 
 
 
-
-#' Compute one column of the confusion matrix
-#'
-#' @param best_traj a data frame with the output of the best fitting model, trajectory, class, LOO proportion
-#' @param expected a character specifying the reference trajectory or class used to generate the simulations
-#' @param type a character specifying the type of classification ("traj" or "class")
-#'
-#' @return a single column dataframe corresponding to a column of the confusion matrix
-#' @export
-
-make_conf_mat <- function(best_traj){
-
-  conf_mat_traj <- caret::confusionMatrix(data=best_traj$traj, reference=best_traj$expected_traj)
-  conf_mat_class <- caret::confusionMatrix(data=best_traj$class, reference=best_traj$expected_class)
-
-  return(list("conf_mat_traj" = conf_mat_traj, "conf_mat_class"=conf_mat_class))
-}
-
-
-
-
-
-# [Server] Run classifications in parallel
-# i: integer indicating noise combination
-
-classif_noise_comb <- function(simu_list, str, run_loo, asd_thr, i){
-
-  print(paste0("noise combination: ",i,"/",length(simu_list)))
-  noise_comb <- names(simu_list)[i]
-
-  sets <- prep_data(df=simu_list[[i]], thr=NULL, type="sim", apriori=TRUE)
-  # sets <- c(sets[1])
-
-  if(str == "aic") abr_mtd <- c("chg")
-  if(str == "aic_asd") abr_mtd <- c("chg", "asd")
-
-  ## workflow 3: AIC + asdetect:
-  trajs <- traj_class(sets, str=str, abr_mtd=abr_mtd, asd_thr=asd_thr, asd_chk=FALSE,
-                      type="sim", noise_comb=noise_comb, smooth_signif=TRUE,
-                      showplots=FALSE, apriori=TRUE, run_loo=run_loo, two_bkps = TRUE,
-                      lowwl=5, highwl="default", mad_thr=3, mad_cst=1.4826,
-                      edge_lim=5, congr_brk=5, plot_one_in=10)
-
-  # traj_list[[noise_comb]] <- trajs
-
-  conf_mat <- make_conf_mat(trajs$best_traj)
-  # mat_list[[noise_comb]] <- conf_mat
-
-
-  return(list("trajs" = trajs,
-              "conf_mat" = conf_mat))
-}
-
-
-
 # Make plots --------------------------------------------------------------
 
 
 #' Summary of MC simulations of classification
 #'
-#' @param sets a list of data frame ready for analyses
+#' @param sets list of data frame ready for analyses
 #' @param rslt data frame returned by res_trend function
 #' @param plot_class class of trajectory corresponding the rslt
-#' @param best_traj a data frame with the output of the best fitting model, trajectory, class, LOO proportion
+#' @param best_traj data frame with the output of the best fitting model, trajectory, class, LOO proportion
 #' @param best_traj_loo output from LOO process
 #' @param detection_plot logical to plot the detection plot
 #'
-#' @return a list of plots with best fit
+#' @return list of plots with best fit
 #' @export
 
-plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL, best_traj_loo=NULL, detection_plot=TRUE){
+plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class,
+                                asd_thr=NULL, best_traj_loo=NULL,
+                                detection_plot=TRUE){
 
-  if (plot_class != "abrupt") plots <- vector(mode = "list", length = nrow(rslt))
-  if (plot_class == "abrupt") plots <- plot_bis <- vector(mode = "list", length = length(rslt$shifts_res))
+  if (plot_class != "abrupt") plots <-
+      vector(mode = "list", length = nrow(rslt))
+
+  if (plot_class == "abrupt") plots <- plot_bis <-
+      vector(mode = "list", length = length(rslt$shifts_res))
 
   for (i in 1:length(sets$ts)){
 
@@ -1898,7 +1831,7 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
     if (sets$ts_type %in% c("Index", "index")) ts_type <- "Index"
     if (sets$ts_type %in% c("R")) ts_type <- "Recruitment"
 
-    # Plot time series and model fit [smooth]:
+    # Plot timeseries and model fit [smooth]:
 
     if (plot_class != "abrupt"){
 
@@ -1908,14 +1841,16 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
           geom_line()+
           theme_light(base_size = 7)+
           labs(x = "time unit (year)", y = ts_type)+
-          # expand_limits(y=c(0,10))+
           expand_limits(y=0)+
-          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+rslt[i,]$inter}, color="blue")+
-          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+rslt[i,]$inter-rslt[i,]$strd}, linetype = "dashed", color="blue")+
-          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+rslt[i,]$inter+rslt[i,]$strd}, linetype = "dashed", color="blue")
+          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+
+              rslt[i,]$inter}, color="blue")+
+          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+
+              rslt[i,]$inter-rslt[i,]$strd}, linetype = "dashed", color="blue")+
+          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+
+              rslt[i,]$inter+rslt[i,]$strd}, linetype = "dashed", color="blue")
       })
 
-      # Plot time series and model fit [abrupt]:
+      # Plot timeseries and model fit [abrupt]:
     } else {
 
       table_chg <- rslt$abt_res$chg %>% dplyr::slice(i) %>%
@@ -1931,7 +1866,8 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
 
         p_asd <- asd_ts %>%
           ggplot(aes(x=year, y=value))+
-          geom_hline(yintercept = c(-asd_thr, asd_thr), col="red", linetype="dotted")+
+          geom_hline(yintercept = c(-asd_thr, asd_thr),
+                     col="red", linetype="dotted")+
           geom_line()+
           theme_light(base_size = 7)+
           labs(y="Detection")+
@@ -1965,10 +1901,10 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
           geom_line()+
           theme_light(base_size = 7)+
           labs(x = "time unit (year)", y = ts_type)+
-          # expand_limits(y=c(0,10))+
           expand_limits(y=0)+
 
-          geom_vline(xintercept = table_chg$loc_brk, col="blue", linetype="dashed")+
+          geom_vline(xintercept = table_chg$loc_brk,
+                     col="blue", linetype="dashed")+
           geom_line(data = rslt$shifts_res[[i]]$chg_outlist$pred_chg,
                     aes(x=year, y=bp), col = "blue", alpha=0.7)+
           scale_colour_manual(values = rep("red", table_chg$n_brk+1))+
@@ -1979,7 +1915,8 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
       # Plot additional breaktimes [chg]
       if ("loc_aux1_chg" %in% names(best_traj)) {
 
-        loc_aux_chg <- c(best_traj[["loc_aux1_chg"]][i], best_traj[["loc_aux2_chg"]][i])
+        loc_aux_chg <- c(best_traj[["loc_aux1_chg"]][i],
+                         best_traj[["loc_aux2_chg"]][i])
         p <- p +
           geom_vline(xintercept = loc_aux_chg[!is.na(loc_aux_chg)],
                      col="dodgerblue4", linetype="dotted", alpha=0.5)
@@ -1995,7 +1932,8 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
 
     # Define title:
     if(plot_class == "no_change"){
-      title_part <- paste0("<br>Intercept = ", format(rslt[i,]$inter, digits=2, scientific=TRUE))
+      title_part <- paste0("<br>Intercept = ",
+                           format(rslt[i,]$inter, digits=2, scientific=TRUE))
     }
 
     if(plot_class == "linear"){
@@ -2004,16 +1942,20 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
       } else {
         pval <- paste0(" p_val = ", round(rslt[i,]$slope_p_value, digits=3))
       }
-      title_part <- paste0("<br>Slope = ", format(rslt[i,]$alpha1, digits=2, scientific=TRUE), pval)
+      title_part <- paste0("<br>Slope = ",
+                           format(rslt[i,]$alpha1, digits=2, scientific=TRUE), pval)
     }
 
     if(plot_class == "quadratic"){
       if(rslt[i,]$second_order_pvalue<0.001){
         pval <- " p_val<0.001"
       } else {
-        pval <- paste0(" p_val = ", round(rslt[i,]$second_order_pvalue, digits=3))
+        pval <- paste0(" p_val = ",
+                       round(rslt[i,]$second_order_pvalue, digits=3))
       }
-      title_part <- paste0("<br>2nd_order_coeff = ", format(rslt[i,]$alpha2, digits=2, scientific=TRUE), pval)
+      title_part <- paste0("<br>2nd_order_coeff = ",
+                           format(rslt[i,]$alpha2, digits=2, scientific=TRUE),
+                           pval)
     }
 
     if(plot_class == "abrupt"){
@@ -2021,9 +1963,6 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
                           if(!(is.na(best_traj$loc_aux1_chg[i]) & is.na(best_traj$loc_aux2_chg[i]))) {
                             paste0(" (<span style='color:dodgerblue4'>",best_traj$loc_aux1_chg[i],"</span>",
                                      ", <span style='color:dodgerblue4'>",best_traj$loc_aux2_chg[i],"</span>)")
-                                   # if(!is.na(best_traj$loc_aux2_chg[i])){
-                                   #   paste0(", <span style='color:dodgerblue2'>",best_traj$loc_aux2_chg[i],"</span>")
-                                   # },")")
                           },
                           if(!is.na(asd_loc[1])) {paste0("; <span style='color:red'>",paste(asd_loc,collapse=","),"</span>")},
                           "  Step size = ", round(table_chg$step_size, digits=2))
@@ -2199,89 +2138,36 @@ plot_traj_multi_abt <- function(sets, rslt, best_traj, plot_class, asd_thr=NULL,
 }
 
 
-
-
-# Plot all time series for a given noise combination
-
-plot_given_noise <- function(path, noise_comb, save=TRUE){
-
-  simu_list_plot <- readRDS(path)
-  scen_exp <- unique(simu_list_plot[[1]] %>% pull(scen))
-
-  gl <- lapply(1:length(scen_exp), function(i){
-
-    plot_simu(simu_list_plot[[noise_comb]] %>%
-                dplyr::filter(scen==scen_exp[i]))[[2]]
-
-  })
-
-
-  if (save){
-    png(paste0("res/03_ricker_library/simu_library/scenarios_",noise_comb,".png"), width = 800, height = 1200)
-    facet <- gridExtra::grid.arrange(grobs=gl, ncol=2, clip=TRUE)
-    dev.off()
-  }
-
-  return(gl)
-}
-
-
-# LOO by class and classification correctness
-weight_boxplot_class_fun <- function(traj, save, workflow, title){
-
-  traj_TCbest_wAIC <- traj %>%
-    tidyr::pivot_longer(cols=contains("weight_"),
-                        names_to = "weight_class",
-                        values_to = "weight") %>%
-    dplyr::mutate(weight_class = sub("weight_aic_","",weight_class)) %>%
-    dplyr::filter(weight_class==class)
-
-  traj_TCbest_wAIC %>%
-    dplyr::group_by(class) %>%
-    dplyr::summarise(mean_weight = mean(weight))
-
-  wAIC_boxplot <- traj_TCbest_wAIC %>%
-    mutate(correct = ifelse(class==expected_class, TRUE, FALSE),
-           length = factor(length, levels = c("l100","l50","l20"))) %>%
-    ggplot(aes(x = class, y = weight, fill = correct))+
-    # geom_jitter(aes(colour=correct), width=0.1, height = 0, alpha=0.5)+
-    geom_point(aes(colour=correct), alpha=0.02,
-               position=position_jitterdodge(dodge.width=0.8, jitter.width = 0.1))+
-    # geom_violin(alpha = 0.7)+
-    geom_boxplot(alpha = 0.3, outlier.shape = NA)+
-    stat_summary(fun.data = function(x){
-      return(c(y = 0.1, label = length(x))) },
-      geom = "text", fun = median, position = position_dodge(width = 0.8))+
-    theme_light()+
-    expand_limits(y=0)+
-    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1))+
-    guides(fill="none", colour="none")+
-    facet_grid(vars(length))+
-    labs(x="Trajectory class", y="AICc weight")+
-    ggtitle(title)
-  wAIC_boxplot
-
-  # if("expected_class" %in% names(traj)) type <- "sim" else type <- "RAM"
-  # ts_type <- traj$simu_id[1] %>% stringr::str_split("_") %>% `[[`(1) %>% `[`(1)
-
-  if(save) ggsave(plot = wAIC_boxplot, width=8, height=10,
-                  paste0("res/03_ricker_library/simu_library/wAIC_boxplot_class_",workflow,".png"))
-
-  return(wAIC_boxplot)
-}
-
-
-
 # Post hoc analyses -------------------------------------------------------
+
+#' Compute a confusion matrix
+#'
+#' @param best_traj data frame with the classification output from simulated
+#' timeseries, with best model and expected trajectory and class
+#'
+#' @return list of confusion matrices considering either the nine trajectories
+#'  or the four trajectory classes.
+#'
+#' @export
+
+make_conf_mat <- function(best_traj){
+
+  conf_mat_traj <- caret::confusionMatrix(data=best_traj$traj, reference=best_traj$expected_traj)
+  conf_mat_class <- caret::confusionMatrix(data=best_traj$class, reference=best_traj$expected_class)
+
+  return(list("conf_mat_traj" = conf_mat_traj, "conf_mat_class"=conf_mat_class))
+}
 
 
 
 #' Pool confusion matrices into one (by length)
 #'
 #' @param path the path to the .rds file output from traj function
-#' @param title a character to display as title
+#' @param title character to display as title
+#' @param show_legend logical, whether to show the legend
 #'
-#' @return a pheatmap
+#' @return pheatmap object
+#'
 #' @export
 
 conf_mat_pool <- function(path, title, show_legend=FALSE) {
@@ -2307,7 +2193,6 @@ conf_mat_pool <- function(path, title, show_legend=FALSE) {
                           legend = show_legend, display_numbers = TRUE,
                           number_format = "%.2f", fontsize = ftsz,
                           number_color="black", fontsize_number = ftsz_nb,
-                          # main=stringr::str_split(path, "/")[[1]][4] %>% sub(x=., "_1",""),
                           main=title)
   return(p)
 }

@@ -8,13 +8,10 @@
 #
 ###-###-###-###-###-###-###-###-###
 
-# devtools::load_all()
 
 library('tidyverse')
-source("R/custom_functions.R")
 source("R/functions_simu.R")
 source("R/functions_trajclass.R")
-source("R/functions_RAMLDB.R")
 source("R/functions_output.R")
 
 
@@ -141,15 +138,26 @@ dev.off()
 
 # Figure 4 - Confusion matrix ---------------------------------------------
 
+lib_dir <- "analyses/classif/library/"
+
 # Make confusion matrices for classification outputs with AICc only:
-p100_aic <- conf_mat_pool("analyses/classif/library/outlist_l100_aic.rds", "100 time points")
-p50_aic <- conf_mat_pool("analyses/classif/library/outlist_l50_1_aic.rds", "50 time points")
-p20_aic <- conf_mat_pool("analyses/classif/library/outlist_l20_1_aic.rds", "20 time points")
+p100_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l100_aic.rds"),
+                          "100 timepoints")
+p50_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l50_1_aic.rds"),
+                         "50 timepoints")
+p20_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l20_1_aic.rds"),
+                         "20 timepoints")
 
 # Make confusion matrices for classification outputs with AICc + asdetect:
-p100_aicasd <- conf_mat_pool("analyses/classif/library/outlist_l100_aic_asd_thr0.15_looTRUE.rds", "")
-p50_aicasd <- conf_mat_pool("analyses/classif/library/outlist_l50_1_aic_asd_thr0.15_looTRUE.rds", "")
-p20_aicasd <- conf_mat_pool("analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds", "")
+p100_aicasd <- conf_mat_pool(paste0(lib_dir,
+                                    "outlist_l100_aic_asd_thr0.15_looTRUE.rds"),
+                             "")
+p50_aicasd <- conf_mat_pool(paste0(lib_dir,
+                                   "outlist_l50_1_aic_asd_thr0.15_looTRUE.rds"),
+                            "")
+p20_aicasd <- conf_mat_pool(paste0(lib_dir,
+                                   "outlist_l20_1_aic_asd_thr0.15_looTRUE.rds"),
+                            "")
 
 # Save the figure:
 pdf("analyses/figs/fig4.pdf", width = 180, height = 120)
@@ -159,12 +167,15 @@ cowplot::plot_grid(p100_aic$gtable, p50_aic$gtable, p20_aic$gtable,
 dev.off()
 
 # Make confusion matrices with colour scale lengend:
-p100_aic_leg <- conf_mat_pool("analyses/classif/library/outlist_l100_aic.rds", "100 time points", show_legend = TRUE)
+p100_aic_leg <- conf_mat_pool(paste0(lib_dir, "outlist_l100_aic.rds"),
+                              "100 timepoints", show_legend = TRUE)
 legend <- p100_aic_leg$gtable$grobs[[5]]
 
 # Save the colour scale:
 pdf("analyses/figs/fig4_leg.pdf", width = 2, height = 5)
-cowplot::plot_grid("", "", "", legend, "", "", nrow=3, ncol=2) %>% suppressWarnings()
+cowplot::plot_grid("", "",
+                   "", legend,
+                   "", "", nrow=3, ncol=2) %>% suppressWarnings()
 dev.off()
 
 # Legend added with Inkscape and other minor changes made
@@ -187,9 +198,11 @@ set <- extract_RAM(stk, ts_type) %>%
   prep_data(thr=thr, type="RAM", apriori=FALSE)
 
 # Run the classification:
-output_RAM <- traj_class(sets=set, str="aic_asd", abr_mtd=c("chg", "asd"), asd_thr=0.15, asd_chk=FALSE,
-                    type="RAM", showplots=TRUE, apriori=FALSE, run_loo=TRUE, save_plot=FALSE,
-                    two_bkps=TRUE, smooth_signif=TRUE, outplot=TRUE, ind_plot="abt", dirname="analyses/")
+output_RAM <- traj_class(sets=set, str="aic_asd", abr_mtd=c("chg", "asd"),
+                         asd_thr=0.15, asd_chk=FALSE, type="RAM",
+                         showplots=TRUE, apriori=FALSE, run_loo=TRUE,
+                         save_plot=FALSE, two_bkps=TRUE, smooth_signif=TRUE,
+                         outplot=TRUE, ind_plot="abt", dirname="analyses/")
 
 # Plot the best trajectory shape:
 p_RAM <- output_RAM$class_plot$plots[[1]] +
@@ -197,7 +210,8 @@ p_RAM <- output_RAM$class_plot$plots[[1]] +
 
 
 # Load Bird PECBMS index:
-df_bird <- readr::read_csv("data/02_PECBMS/europe-indicesandtrends-till2021_mod.csv")
+df_bird <- readr::read_csv(
+  "data/02_PECBMS/europe-indicesandtrends-till2021_mod.csv")
 
 # Select and reshape the data:
 # Ortolan bunting (Emberiza hortulana) in Europe:
@@ -214,8 +228,9 @@ df_list_hort <- df_list_bird["Emberiza_hortulana"]
 output_bird <- run_classif_data(df_list_hort, min_len=20, str="aic_asd",
                            normalize=FALSE, showplots=TRUE, save_plot=FALSE,
                            run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
-                           group="PECBMS_species_name", time="Year", variable="Index",
-                           outplot=TRUE, ind_plot="abt", dirname="analyses/")
+                           group="PECBMS_species_name", time="Year",
+                           variable="Index", outplot=TRUE, ind_plot="abt",
+                           dirname="analyses/")
 
 # Plot the best trajectory shape:
 p_bird <- output_bird$outlist$Emberiza_hortulana$class_plot$plots[[1]] +
@@ -223,17 +238,18 @@ p_bird <- output_bird$outlist$Emberiza_hortulana$class_plot$plots[[1]] +
 
 
 # Load Odonate index from Termaat et al. 2019:
-df_odo <- readr::read_csv("data/03_Termaat2019/ddi12913-sup-0003-datas1.csv") %>%
-  pivot_longer(cols = (!region & !species & !nplot & !trend & !trend_se & !trend_category),
+df_odo <- readr::read_csv("data/03_Termaat2019/ddi12913-sup-0003-datas1.csv")%>%
+  tidyr::pivot_longer(cols = (!region & !species & !nplot &
+                         !trend & !trend_se & !trend_category),
                names_to = "year",
                values_to = "index") %>%
-  mutate(year = as.numeric(year)) %>%
-  drop_na()
+  dplyr::mutate(year = as.numeric(year)) %>%
+  tidyr::drop_na()
 
 # Select and reshape the data
 # Small red-eyed damselfly (Erythromma viridulum) in Britain:
 df_odo_brit <- df_odo %>%
-  filter(region %in% c("Britain"))
+  dplyr::filter(region %in% c("Britain"))
 
 species <- unique(df_odo_brit$species) %>% sort()
 
@@ -256,8 +272,8 @@ p_odo <- output_odo$outlist$`Erythromma viridulum`$class_plot$plots[[1]] +
   theme(plot.background = element_rect(fill = "white"))
 
 # Combine plots and save the figure:
-fig5 <- cowplot::plot_grid(p_RAM, p_bird, p_odo, nrow=1, ncol=3
-                        ,labels=c("A","B","C"), label_size=15, label_x = -0.0)
+fig5 <- cowplot::plot_grid(p_RAM, p_bird, p_odo, nrow=1, ncol=3,
+                        labels=c("A","B","C"), label_size=15, label_x = -0.0)
 cowplot::save_plot(filename = "analyses/figs/fig5.pdf",
                    plot=fig5, base_height = 3, base_width = 12)
 
@@ -269,17 +285,25 @@ cowplot::save_plot(filename = "analyses/figs/fig5.pdf",
 
 # Figure S1 - Confidence matrices by noise AICc + asdetect ------------------
 
+lib_dir <- "analyses/classif/library/"
+
 # Load classification output:
-outlist_aicasd_l100 <- readRDS("analyses/classif/library/outlist_l100_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_0.15 <- list("l100"=outlist_aicasd_l100, "l50"=outlist_aicasd_l50, "l20"=outlist_aicasd_l20)
+outlist_aicasd_l100 <- readRDS(
+  paste0(lib_dir, "outlist_l100_aic_asd_thr0.15_looTRUE.rds"))
+outlist_aicasd_l50 <- readRDS(
+  paste0(lib_dir,"outlist_l50_1_aic_asd_thr0.15_looTRUE.rds"))
+outlist_aicasd_l20 <- readRDS(
+  paste0(lib_dir,"outlist_l20_1_aic_asd_thr0.15_looTRUE.rds"))
+
+outlist_aicasd_0.15 <- list("l100"=outlist_aicasd_l100,
+                            "l50"=outlist_aicasd_l50,
+                            "l20"=outlist_aicasd_l20)
 
 # Make matrices:
-all_aicasd <- conf_mat_noise_final(outlist_aicasd_0.15, "fig_S1_aicasd", save=FALSE)
+all_aicasd <- conf_mat_noise(outlist_aicasd_0.15, "fig_S1_aicasd", save=FALSE)
 
 # Save figure:
-pdf(paste0("analyses/figs/supp_mat/fig_s1_aicasd.pdf"), width = 40, height = 100)
+pdf(paste0("analyses/figs/supp_mat/fig_s1_aicasd.pdf"), width=40, height=100)
 print(all_aicasd)
 dev.off()
 
@@ -289,14 +313,19 @@ dev.off()
 
 # Figure S2 - Confidence matrices by noise AICc only ------------------------
 
+lib_dir <- "analyses/classif/library/"
+
 # Load classification output:
-outlist_aic_l100 <- readRDS("analyses/classif/library/outlist_l100_aic.rds")
-outlist_aic_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic.rds")
-outlist_aic_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic.rds")
-outlist_aic_0.15 <- list("l100"=outlist_aic_l100, "l50"=outlist_aic_l50, "l20"=outlist_aic_l20)
+outlist_aic_l100 <- readRDS(paste0(lib_dir,"outlist_l100_aic.rds"))
+outlist_aic_l50 <- readRDS(paste0(lib_dir,"outlist_l50_1_aic.rds"))
+outlist_aic_l20 <- readRDS(paste0(lib_dir,"outlist_l20_1_aic.rds"))
+
+outlist_aic_0.15 <- list("l100"=outlist_aic_l100,
+                         "l50"=outlist_aic_l50,
+                         "l20"=outlist_aic_l20)
 
 # Make matrices:
-all_aic <- conf_mat_noise_final(outlist_aic_0.15, "fig_S2_aic", save=FALSE)
+all_aic <- conf_mat_noise(outlist_aic_0.15, "fig_S2_aic", save=FALSE)
 
 # Save figure:
 pdf(paste0("analyses/figs/supp_mat/fig_s2_aic.pdf"), width = 40, height = 100)
@@ -312,7 +341,6 @@ dev.off()
 # Load simulated timeseries
 simu_list <- readRDS("data/00_simu/all_simu_l100.rds")
 
-
 class_list <- c("nch","lin","pol")
 id_list <- c(1, 201, 401)
 
@@ -324,11 +352,16 @@ no_abt <-
                 function(i){
                   noise_comb <- sub(".*?_", "", names(simu_list)[i])
 
-                  sets <- prep_data(df=simu_list[[i]], thr=-1, type="sim", apriori=TRUE)
+                  sets <- prep_data(df=simu_list[[i]], thr=-1,
+                                    type="sim", apriori=TRUE)
                   sets <- list("ts"=c(sets$ts[id]), "ts_type"=sets$ts_type)
-                  trajs <- traj_class(sets, str="aic_asd", abr_mtd=c("chg", "asd"), noise_comb=noise_comb, asd_chk=TRUE,
-                                      asd_thr=0.15, type="sim", showplots=TRUE, apriori=TRUE, run_loo=FALSE,
-                                      two_bkps = TRUE, smooth_signif = TRUE, outplot=TRUE, ind_plot=class)
+                  trajs <- traj_class(sets, str="aic_asd",
+                                      abr_mtd=c("chg", "asd"),
+                                      noise_comb=noise_comb, asd_chk=TRUE,
+                                      asd_thr=0.15, type="sim", showplots=TRUE,
+                                      apriori=TRUE, run_loo=FALSE,
+                                      two_bkps = TRUE, smooth_signif = TRUE,
+                                      outplot=TRUE, ind_plot=class)
                   trajs$class_plot[[1]]
                 }
     )
@@ -349,11 +382,16 @@ abt <- lapply(1:length(simu_list),
               function(i){
                 noise_comb <- sub(".*?_", "", names(simu_list)[i])
 
-                sets <- prep_data(df=simu_list[[i]], thr=-1, type="sim", apriori=TRUE)
+                sets <- prep_data(df=simu_list[[i]], thr=-1,
+                                  type="sim", apriori=TRUE)
                 sets <- list("ts"=c(sets$ts[601]), "ts_type"=sets$ts_type)
-                trajs <- traj_class(sets, str="aic_asd", abr_mtd=c("chg", "asd"), noise_comb=noise_comb, asd_chk=TRUE,
-                                    asd_thr=0.15, type="sim", showplots=TRUE, apriori=TRUE, run_loo=FALSE,
-                                    two_bkps = TRUE, smooth_signif = TRUE, outplot=TRUE, ind_plot="abt")
+                trajs <- traj_class(sets, str="aic_asd",
+                                    abr_mtd=c("chg", "asd"),
+                                    noise_comb=noise_comb, asd_chk=TRUE,
+                                    asd_thr=0.15, type="sim", showplots=TRUE,
+                                    apriori=TRUE, run_loo=FALSE,
+                                    two_bkps = TRUE, smooth_signif = TRUE,
+                                    outplot=TRUE, ind_plot="abt")
                 trajs$class_plot$plots[[1]]
               }
 )
@@ -389,9 +427,11 @@ dir.create("analyses/figs/supp_mat/fig_s4", showWarnings = FALSE)
 roc_df <- readRDS("analyses/classif/roc/roc_df_thr.rds") %>%
   # Simplify classification as abrupt/not abrupt:
   dplyr::mutate(class = ifelse(class=="abrupt", "abrupt", "not abrupt"),
-                expected_class = ifelse(expected_class=="abrupt", "abrupt", "not abrupt"),
+                expected_class = ifelse(expected_class=="abrupt",
+                                        "abrupt", "not abrupt"),
                 class = factor(class, levels=c("abrupt","not abrupt")),
-                expected_class = factor(expected_class, levels=c("abrupt","not abrupt")))
+                expected_class = factor(expected_class,
+                                        levels=c("abrupt","not abrupt")))
 
 # Make confusion matrices for each length and threshold value:
 roc_thr <- data.frame()
@@ -427,10 +467,13 @@ roc_aic_only <- combine_length(list(outlist_aic_l20,
                                     outlist_aic_l50,
                                     outlist_aic_l100)) %>%
   dplyr::mutate(class = ifelse(class=="abrupt", "abr.", "not abr."),
-                expected_class = ifelse(expected_class=="abrupt", "abr.", "not abr."),
+                expected_class = ifelse(expected_class=="abrupt",
+                                        "abr.", "not abr."),
                 class = factor(class, levels=c("abr.","not abr.")),
-                expected_class = factor(expected_class, levels=c("abr.","not abr.")),
-                length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
+                expected_class = factor(expected_class,
+                                        levels=c("abr.","not abr.")),
+                length = factor(length,
+                                levels=c("l20","l25","l33","l50","l100"))) %>%
   split(.$length) %>%
   lapply(function(x){
     mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
@@ -456,7 +499,8 @@ roc_aic_only_conf_mat <- roc_aic_only %>%
     mat[,1] <- mat[,1]/2400
     mat[,2] <- mat[,2]/7200
 
-    mat <- mat[nrow(mat):1, nrow(mat):1] # Reverse for consistency with full confusion matrix
+    # Reverse for consistency with full confusion matrix:
+    mat <- mat[nrow(mat):1, nrow(mat):1]
 
     mat %>%
       pheatmap::pheatmap(
@@ -472,11 +516,19 @@ roc_aic_only_conf_mat <- roc_aic_only %>%
   )
 
 # Load classification output for AICc + asdetect:
-outlist_aicasd_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l25 <- readRDS("analyses/classif/library/outlist_l25_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l33 <- readRDS("analyses/classif/library/outlist_l33_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l100 <- readRDS("analyses/classif/library/outlist_l100_aic_asd_thr0.15_looTRUE.rds")
+
+lib_dir <- "analyses/classif/library/"
+
+outlist_aicasd_l20 <- readRDS(
+  "analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l25 <- readRDS(
+  "analyses/classif/library/outlist_l25_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l33 <- readRDS(
+  "analyses/classif/library/outlist_l33_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l50 <- readRDS(
+  "analyses/classif/library/outlist_l50_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l100 <- readRDS(
+  "analyses/classif/library/outlist_l100_aic_asd_thr0.15_looTRUE.rds")
 
 # Make confusion matrices for each length:
 roc_aicasd <- combine_length(list(outlist_aicasd_l20,
@@ -485,10 +537,13 @@ roc_aicasd <- combine_length(list(outlist_aicasd_l20,
                                   outlist_aicasd_l50,
                                   outlist_aicasd_l100)) %>%
   dplyr::mutate(class = ifelse(class=="abrupt", "abr.", "not abr."),
-                expected_class = ifelse(expected_class=="abrupt", "abr.", "not abr."),
+                expected_class = ifelse(expected_class=="abrupt",
+                                        "abr.", "not abr."),
                 class = factor(class, levels=c("abr.","not abr.")),
-                expected_class = factor(expected_class, levels=c("abr.","not abr.")),
-                length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
+                expected_class = factor(expected_class,
+                                        levels=c("abr.","not abr.")),
+                length = factor(length,
+                                levels=c("l20","l25","l33","l50","l100"))) %>%
   split(.$length) %>%
   lapply(function(x){
     mat <- caret::confusionMatrix(data=x$class, reference=x$expected_class)
@@ -508,7 +563,8 @@ roc_aicasd_conf_mat <- roc_aicasd %>%
     mat[,1] <- mat[,1]/2400
     mat[,2] <- mat[,2]/7200
 
-    mat <- mat[nrow(mat):1, nrow(mat):1] # Reverse for consistency with full confusion matrix
+    # Reverse for consistency with full confusion matrix:
+    mat <- mat[nrow(mat):1, nrow(mat):1]
 
     mat %>%
       pheatmap::pheatmap(
@@ -545,18 +601,21 @@ roc_thr <- roc_thr[-c(1,6,5,10),]
 
 # Plot and save complete ROC curve:
 p_roc_thr <- roc_thr %>%
-  dplyr::mutate(length = factor(length, levels=c("l20","l25","l33","l50","l100"))) %>%
+  dplyr::mutate(length = factor(length,
+                                levels=c("l20","l25","l33","l50","l100"))) %>%
   ggplot(aes(x=FP, y=TP, color=length))+
   geom_line()+
   geom_point(alpha=0.2)+
   geom_abline(slope = 1, lty=2)+
   expand_limits(x=c(0,1), y=c(0,1))+
-  geom_point(data=roc_aic_only_df, aes(x=FP, y=TP, color=length), shape=2, size=4)+
+  geom_point(data=roc_aic_only_df, aes(x=FP, y=TP, color=length),
+             shape=2, size=4)+
   theme_light()+
   theme(legend.position = "none")+
   labs(x="False Positive rate", y="True Positive rate")
 
-ggsave(filename = "analyses/figs/supp_mat/fig_s4/fig_s4a.pdf", width=10, height=10,
+ggsave(filename = "analyses/figs/supp_mat/fig_s4/fig_s4a.pdf",
+       width=10, height=10,
        plot = p_roc_thr)
 
 # Plot and save a close-up of the ROC curve with threshold values annotated:
@@ -569,8 +628,8 @@ p_roc_thr_zoom <- p_roc_thr +
                             segment.color = "grey50",
                             max.overlaps=100)
 
-ggsave(filename = "analyses/figs/supp_mat/fig_s4/fig_s4b.pdf", width=4, height=4,
-       plot = p_roc_thr_zoom)
+ggsave(filename = "analyses/figs/supp_mat/fig_s4/fig_s4b.pdf",
+       width=4, height=4, plot = p_roc_thr_zoom)
 
 # All combined with Inkscape
 
@@ -578,11 +637,16 @@ ggsave(filename = "analyses/figs/supp_mat/fig_s4/fig_s4b.pdf", width=4, height=4
 # Figure S5 - Distribution of classification scores -----------------------
 
 # Load classification output:
-outlist_aicasd_l100 <- readRDS("analyses/classif/library/outlist_l100_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l33 <- readRDS("analyses/classif/library/outlist_l33_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l25 <- readRDS("analyses/classif/library/outlist_l25_1_aic_asd_thr0.15_looTRUE.rds")
-outlist_aicasd_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l100 <- readRDS(
+  "analyses/classif/library/outlist_l100_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l50 <- readRDS(
+  "analyses/classif/library/outlist_l50_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l33 <- readRDS(
+  "analyses/classif/library/outlist_l33_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l25 <- readRDS(
+  "analyses/classif/library/outlist_l25_1_aic_asd_thr0.15_looTRUE.rds")
+outlist_aicasd_l20 <- readRDS(
+  "analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds")
 
 # Combine classification output into a single dataframe:
 outlist_aicasd <- combine_length(list(outlist_aicasd_l20,
@@ -616,14 +680,15 @@ deciles <- loo_wAICc_nmrse_obs_long %>%
 # Plot score distributions:
 fig_s5 <- ggplot(loo_wAICc_nmrse_obs_long %>%
                    dplyr::filter(class_tested==class) %>%
-                   dplyr::mutate(correct = ifelse(class==expected_class, TRUE, FALSE)),
+                   dplyr::mutate(correct = ifelse(class==expected_class,
+                                                  TRUE, FALSE)),
                  aes(x = value, fill = correct)) +
   geom_histogram(alpha = 0.4, binwidth = 0.1, position="identity") +
   theme_classic() +
   facet_grid(rows=vars(metric), cols=vars(class_tested), scales="free_x")+
   theme(legend.position = "none")+
-  geom_vline(data = deciles, aes(xintercept = lower, col = correct, lty=correct)) +
-  geom_vline(data = deciles, aes(xintercept = upper, col = correct, lty=correct))+
+  geom_vline(data = deciles, aes(xintercept=lower, col=correct, lty=correct)) +
+  geom_vline(data = deciles, aes(xintercept=upper, col=correct, lty=correct))+
   scale_linetype_manual(values = c("TRUE" = "solid", "FALSE" = "dashed")) +
   scale_colour_manual(values = c("TRUE" = "#00bfc4", "FALSE" = "#f8766d"))
 
@@ -640,70 +705,112 @@ dir.create("analyses/figs/supp_mat/fig_s6", showWarnings = FALSE)
 # Make confusion matrices:
 
 # For untransformed 'raw' timeseries:
-outlist_aic_raw_l20 <- readRDS("analyses/classif/data_transf/outlist_l20_1_aic_asd_raw_thr0.15.rds")
-outlist_aic_raw_l25 <- readRDS("analyses/classif/data_transf/outlist_l25_1_aic_asd_raw_thr0.15.rds")
-outlist_aic_raw_l33 <- readRDS("analyses/classif/data_transf/outlist_l33_1_aic_asd_raw_thr0.15.rds")
-outlist_aic_raw_l50 <- readRDS("analyses/classif/data_transf/outlist_l50_1_aic_asd_raw_thr0.15.rds")
-outlist_aic_raw_l100 <- readRDS("analyses/classif/data_transf/outlist_l100_aic_asd_raw_thr0.15.rds")
+outlist_aic_raw_l20 <- readRDS(
+  "analyses/classif/data_transf/outlist_l20_1_aic_asd_raw_thr0.15.rds")
+outlist_aic_raw_l25 <- readRDS(
+  "analyses/classif/data_transf/outlist_l25_1_aic_asd_raw_thr0.15.rds")
+outlist_aic_raw_l33 <- readRDS(
+  "analyses/classif/data_transf/outlist_l33_1_aic_asd_raw_thr0.15.rds")
+outlist_aic_raw_l50 <- readRDS(
+  "analyses/classif/data_transf/outlist_l50_1_aic_asd_raw_thr0.15.rds")
+outlist_aic_raw_l100 <- readRDS(
+  "analyses/classif/data_transf/outlist_l100_aic_asd_raw_thr0.15.rds")
+
 outlist_aic_raw <- combine_length(list(outlist_aic_raw_l20, outlist_aic_raw_l25,
                                        outlist_aic_raw_l33, outlist_aic_raw_l50,
                                        outlist_aic_raw_l100))
-conf_mat_raw <- conf_mat(outlist_aic_raw, "no_transfo", dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
+conf_mat_raw <- conf_mat(outlist_aic_raw, "no_transfo",
+                         dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
 
 # For timeseries scaled by mean value:
-outlist_aic_msz_l20 <- readRDS("analyses/classif/data_transf/outlist_l20_1_aic_asd_msz_thr0.15.rds")
-outlist_aic_msz_l25 <- readRDS("analyses/classif/data_transf/outlist_l25_1_aic_asd_msz_thr0.15.rds")
-outlist_aic_msz_l33 <- readRDS("analyses/classif/data_transf/outlist_l33_1_aic_asd_msz_thr0.15.rds")
-outlist_aic_msz_l50 <- readRDS("analyses/classif/data_transf/outlist_l50_1_aic_asd_msz_thr0.15.rds")
-outlist_aic_msz_l100 <- readRDS("analyses/classif/data_transf/outlist_l100_aic_asd_msz_thr0.15.rds")
+outlist_aic_msz_l20 <- readRDS(
+  "analyses/classif/data_transf/outlist_l20_1_aic_asd_msz_thr0.15.rds")
+outlist_aic_msz_l25 <- readRDS(
+  "analyses/classif/data_transf/outlist_l25_1_aic_asd_msz_thr0.15.rds")
+outlist_aic_msz_l33 <- readRDS(
+  "analyses/classif/data_transf/outlist_l33_1_aic_asd_msz_thr0.15.rds")
+outlist_aic_msz_l50 <- readRDS(
+  "analyses/classif/data_transf/outlist_l50_1_aic_asd_msz_thr0.15.rds")
+outlist_aic_msz_l100 <- readRDS(
+  "analyses/classif/data_transf/outlist_l100_aic_asd_msz_thr0.15.rds")
+
 outlist_aic_msz <- combine_length(list(outlist_aic_msz_l20, outlist_aic_msz_l25,
                                        outlist_aic_msz_l33, outlist_aic_msz_l50,
                                        outlist_aic_msz_l100))
-conf_mat_msz <- conf_mat(outlist_aic_msz, "divide_by_mean", dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
+conf_mat_msz <- conf_mat(outlist_aic_msz, "divide_by_mean",
+                         dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
 
 # For rescaled timeseries:
-outlist_aic_nrm_l20 <- readRDS("analyses/classif/data_transf/outlist_l20_1_aic_asd_nrm_thr0.15.rds")
-outlist_aic_nrm_l25 <- readRDS("analyses/classif/data_transf/outlist_l25_1_aic_asd_nrm_thr0.15.rds")
-outlist_aic_nrm_l33 <- readRDS("analyses/classif/data_transf/outlist_l33_1_aic_asd_nrm_thr0.15.rds")
-outlist_aic_nrm_l50 <- readRDS("analyses/classif/data_transf/outlist_l50_1_aic_asd_nrm_thr0.15.rds")
-outlist_aic_nrm_l100 <- readRDS("analyses/classif/data_transf/outlist_l100_aic_asd_nrm_thr0.15.rds")
+outlist_aic_nrm_l20 <- readRDS(
+  "analyses/classif/data_transf/outlist_l20_1_aic_asd_nrm_thr0.15.rds")
+outlist_aic_nrm_l25 <- readRDS(
+  "analyses/classif/data_transf/outlist_l25_1_aic_asd_nrm_thr0.15.rds")
+outlist_aic_nrm_l33 <- readRDS(
+  "analyses/classif/data_transf/outlist_l33_1_aic_asd_nrm_thr0.15.rds")
+outlist_aic_nrm_l50 <- readRDS(
+  "analyses/classif/data_transf/outlist_l50_1_aic_asd_nrm_thr0.15.rds")
+outlist_aic_nrm_l100 <- readRDS(
+  "analyses/classif/data_transf/outlist_l100_aic_asd_nrm_thr0.15.rds")
+
 outlist_aic_nrm <- combine_length(list(outlist_aic_nrm_l20, outlist_aic_nrm_l25,
                                        outlist_aic_nrm_l33, outlist_aic_nrm_l50,
                                        outlist_aic_nrm_l100))
-conf_mat_nrm <- conf_mat(outlist_aic_nrm, "normalize_btwn0and1", dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
+conf_mat_nrm <- conf_mat(outlist_aic_nrm, "normalize_btwn0and1",
+                         dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
 
 # For standardized timeseries:
-outlist_aic_std_l20 <- readRDS("analyses/classif/data_transf/outlist_l20_1_aic_asd_std_thr0.15.rds")
-outlist_aic_std_l25 <- readRDS("analyses/classif/data_transf/outlist_l25_1_aic_asd_std_thr0.15.rds")
-outlist_aic_std_l33 <- readRDS("analyses/classif/data_transf/outlist_l33_1_aic_asd_std_thr0.15.rds")
-outlist_aic_std_l50 <- readRDS("analyses/classif/data_transf/outlist_l50_1_aic_asd_std_thr0.15.rds")
-outlist_aic_std_l100 <- readRDS("analyses/classif/data_transf/outlist_l100_aic_asd_std_thr0.15.rds")
+outlist_aic_std_l20 <- readRDS(
+  "analyses/classif/data_transf/outlist_l20_1_aic_asd_std_thr0.15.rds")
+outlist_aic_std_l25 <- readRDS(
+  "analyses/classif/data_transf/outlist_l25_1_aic_asd_std_thr0.15.rds")
+outlist_aic_std_l33 <- readRDS(
+  "analyses/classif/data_transf/outlist_l33_1_aic_asd_std_thr0.15.rds")
+outlist_aic_std_l50 <- readRDS(
+  "analyses/classif/data_transf/outlist_l50_1_aic_asd_std_thr0.15.rds")
+outlist_aic_std_l100 <- readRDS(
+  "analyses/classif/data_transf/outlist_l100_aic_asd_std_thr0.15.rds")
+
 outlist_aic_std <- combine_length(list(outlist_aic_std_l20, outlist_aic_std_l25,
                                        outlist_aic_std_l33, outlist_aic_std_l50,
                                        outlist_aic_std_l100))
-conf_mat_std <- conf_mat(outlist_aic_std, "standardize", dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
+conf_mat_std <- conf_mat(outlist_aic_std, "standardize",
+                         dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
 
 # For timeseries after square root transformation:
-outlist_aic_sqr_l20 <- readRDS("analyses/classif/data_transf/outlist_l20_1_aic_asd_sqr_thr0.15.rds")
-outlist_aic_sqr_l25 <- readRDS("analyses/classif/data_transf/outlist_l25_1_aic_asd_sqr_thr0.15.rds")
-outlist_aic_sqr_l33 <- readRDS("analyses/classif/data_transf/outlist_l33_1_aic_asd_sqr_thr0.15.rds")
-outlist_aic_sqr_l50 <- readRDS("analyses/classif/data_transf/outlist_l50_1_aic_asd_sqr_thr0.15.rds")
-outlist_aic_sqr_l100 <- readRDS("analyses/classif/data_transf/outlist_l100_aic_asd_sqr_thr0.15.rds")
+outlist_aic_sqr_l20 <- readRDS(
+  "analyses/classif/data_transf/outlist_l20_1_aic_asd_sqr_thr0.15.rds")
+outlist_aic_sqr_l25 <- readRDS(
+  "analyses/classif/data_transf/outlist_l25_1_aic_asd_sqr_thr0.15.rds")
+outlist_aic_sqr_l33 <- readRDS(
+  "analyses/classif/data_transf/outlist_l33_1_aic_asd_sqr_thr0.15.rds")
+outlist_aic_sqr_l50 <- readRDS(
+  "analyses/classif/data_transf/outlist_l50_1_aic_asd_sqr_thr0.15.rds")
+outlist_aic_sqr_l100 <- readRDS(
+  "analyses/classif/data_transf/outlist_l100_aic_asd_sqr_thr0.15.rds")
+
 outlist_aic_sqr <- combine_length(list(outlist_aic_sqr_l20, outlist_aic_sqr_l25,
                                        outlist_aic_sqr_l33, outlist_aic_sqr_l50,
                                        outlist_aic_sqr_l100))
-conf_mat_sqr <- conf_mat(outlist_aic_sqr, "squareroot", dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
+conf_mat_sqr <- conf_mat(outlist_aic_sqr, "squareroot",
+                         dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
 
 # For timeseries after logarithm transformation:
-outlist_aic_log_l20 <- readRDS("analyses/classif/data_transf/outlist_l20_1_aic_asd_log_thr0.15.rds")
-outlist_aic_log_l25 <- readRDS("analyses/classif/data_transf/outlist_l25_1_aic_asd_log_thr0.15.rds")
-outlist_aic_log_l33 <- readRDS("analyses/classif/data_transf/outlist_l33_1_aic_asd_log_thr0.15.rds")
-outlist_aic_log_l50 <- readRDS("analyses/classif/data_transf/outlist_l50_1_aic_asd_log_thr0.15.rds")
-outlist_aic_log_l100 <- readRDS("analyses/classif/data_transf/outlist_l100_aic_asd_log_thr0.15.rds")
+outlist_aic_log_l20 <- readRDS(
+  "analyses/classif/data_transf/outlist_l20_1_aic_asd_log_thr0.15.rds")
+outlist_aic_log_l25 <- readRDS(
+  "analyses/classif/data_transf/outlist_l25_1_aic_asd_log_thr0.15.rds")
+outlist_aic_log_l33 <- readRDS(
+  "analyses/classif/data_transf/outlist_l33_1_aic_asd_log_thr0.15.rds")
+outlist_aic_log_l50 <- readRDS(
+  "analyses/classif/data_transf/outlist_l50_1_aic_asd_log_thr0.15.rds")
+outlist_aic_log_l100 <- readRDS(
+  "analyses/classif/data_transf/outlist_l100_aic_asd_log_thr0.15.rds")
+
 outlist_aic_log <- combine_length(list(outlist_aic_log_l20, outlist_aic_log_l25,
                                        outlist_aic_log_l33, outlist_aic_log_l50,
                                        outlist_aic_log_l100))
-conf_mat_log <- conf_mat(outlist_aic_log, "logarithm", dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
+conf_mat_log <- conf_mat(outlist_aic_log, "logarithm",
+                         dirname="analyses/figs/supp_mat/fig_s6", save=TRUE)
 
 
 # Plot examples of transformed timeseries:
@@ -812,7 +919,8 @@ trajs <- traj_class(subsets, str="aic_asd", abr_mtd=c("chg", "asd"),
                     type="sim", showplots=TRUE, apriori=TRUE, run_loo=TRUE,
                     two_bkps = TRUE, smooth_signif = TRUE, edge_lim=5,
                     congr_brk=5, outplot=TRUE, save_plot=TRUE, plot_one_in=1,
-                    save_plot_bis=FALSE, dirname="analyses/figs/supp_mat/fig_s7/")
+                    save_plot_bis=FALSE,
+                    dirname="analyses/figs/supp_mat/fig_s7/")
 
 # Then combined with Inkscape
 
@@ -836,9 +944,12 @@ set <- extract_RAM(stk, ts_type) %>%
   prep_data(thr=thr, type="RAM", apriori=FALSE)
 
 # Run the classification:
-output_RAM <- traj_class(sets=set, str=str, abr_mtd=c("chg", "asd"), asd_thr=0.15, asd_chk=FALSE,
-                         type="RAM", showplots=TRUE, apriori=FALSE, run_loo=TRUE, mad_cst=1, save_plot = FALSE,
-                         two_bkps=TRUE, smooth_signif=TRUE, outplot=TRUE, ind_plot=NULL, dirname="analyses/")
+output_RAM <- traj_class(sets=set, str=str, abr_mtd=c("chg", "asd"),
+                         asd_thr=0.15, asd_chk=FALSE, type="RAM",
+                         showplots=TRUE, apriori=FALSE, run_loo=TRUE,
+                         mad_cst=1, save_plot = FALSE, two_bkps=TRUE,
+                         smooth_signif=TRUE, outplot=TRUE,ind_plot=NULL,
+                         dirname="analyses/")
 
 # Plot the trajectory shapes:
 p_RAM <- output_RAM$class_plot+
@@ -847,7 +958,8 @@ p_RAM <- output_RAM$class_plot+
 
 
 # Load Bird PECBMS index
-df_bird <- readr::read_csv("data/02_PECBMS/europe-indicesandtrends-till2021_mod.csv")
+df_bird <- readr::read_csv(
+  "data/02_PECBMS/europe-indicesandtrends-till2021_mod.csv")
 
 # Select and reshape the data:
 # European greenfinch (Chloris chloris) in Europe:
@@ -875,17 +987,18 @@ p_bird <- output_bird$outlist$Chloris_chloris$class_plot+
 
 
 # Load Odonate index from Termaat et al. 2019:
-df_odo <- readr::read_csv("data/03_Termaat2019/ddi12913-sup-0003-datas1.csv") %>%
-  pivot_longer(cols = (!region & !species & !nplot & !trend & !trend_se & !trend_category),
+df_odo <- readr::read_csv("data/03_Termaat2019/ddi12913-sup-0003-datas1.csv")%>%
+  tidyr::pivot_longer(cols = (!region & !species & !nplot &
+                         !trend & !trend_se & !trend_category),
                names_to = "year",
                values_to = "index") %>%
-  mutate(year = as.numeric(year)) %>%
-  drop_na()
+  dplyr::mutate(year = as.numeric(year)) %>%
+  tidyr::drop_na()
 
 # Select and reshape the data:
 # White-megged damselfly (Platycnemis pennipes) in Britain
 df_odo_brit <- df_odo %>%
-  filter(region %in% c("Britain"))
+  dplyr::filter(region %in% c("Britain"))
 
 species <- unique(df_odo_brit$species) %>% sort()
 
@@ -911,8 +1024,8 @@ p_odo <- output_odo$outlist$`Platycnemis pennipes`$class_plot+
 
 
 # Combine plots and save the figure:
-fig_s8 <- cowplot::plot_grid(p_RAM, p_bird, p_odo, nrow=3, ncol=1
-                           ,labels=c("A","B","C"), label_size=15, label_x = -0.0)
+fig_s8 <- cowplot::plot_grid(p_RAM, p_bird, p_odo, nrow=3, ncol=1,
+                             labels=c("A","B","C"), label_size=15, label_x=-0.0)
 cowplot::save_plot(filename = "analyses/figs/supp_mat/fig_s8.pdf",
                    plot=fig_s8, base_height = 20, base_width = 10)
 
@@ -928,19 +1041,17 @@ library(patchwork)
 bifurc_2D_h0.75_p2 <- bifurc_analysis(Ts=100, K=10, H=0.75, P=2,
                                       rmax=2.0, rstep=0.1,
                                       Fmax=7.5, Fstep=0.1,
-                                      thr=0, init=0.9,
-                                      save=FALSE)
+                                      thr=0, init=0.9)
 
 # Bifurcation diagram for h=2:
 bifurc_2D_h2_p2 <- bifurc_analysis(Ts=100, K=10, H=2, P=2,
                                    rmax=2.0, rstep=0.1,
                                    Fmax=7.5, Fstep=0.1,
-                                   thr=0, init=0.9,
-                                   save=FALSE)
+                                   thr=0, init=0.9)
 
 # Combine and save plot:
-fig_s9 <- cowplot::plot_grid(bifurc_2D_h0.75_p2[[1]],
-                             bifurc_2D_h2_p2[[1]], nrow=1, ncol=2,
+fig_s9 <- cowplot::plot_grid(bifurc_2D_h0.75_p2$plot_inc,
+                             bifurc_2D_h2_p2$plot_inc, nrow=1, ncol=2,
                             labels=c("A","B"), label_size=15, label_x = -0.0)
 
 cowplot::save_plot(filename = "analyses/figs/supp_mat/fig_s9.pdf",
