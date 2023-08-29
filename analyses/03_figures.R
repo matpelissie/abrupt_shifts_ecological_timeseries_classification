@@ -1,10 +1,8 @@
 ###-###-###-###-###-###-###-###-###
 #
-# 08/03/2023 mathieu.pelissie@ens-lyon.fr
+# Make figures
 #
-# Make figures for paper 1
-#
-# fig_art1.R
+# 03_figures.R
 #
 ###-###-###-###-###-###-###-###-###
 

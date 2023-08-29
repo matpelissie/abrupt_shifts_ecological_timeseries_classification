@@ -1,7 +1,5 @@
 ###-###-###-###-###-###-###-###-###
 #
-# 04/07/2023 mathieu.pelissie@umontpellier.fr
-#
 # Generate library of timeseries
 #
 # 01_generate_timeseries.R

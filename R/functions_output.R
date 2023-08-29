@@ -1,7 +1,5 @@
 ###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###
 #
-# 11/04/2023 mathieu.pelissie@ens-lyon.fr
-#
 # Functions to analyse outputs
 #
 # functions_output.R

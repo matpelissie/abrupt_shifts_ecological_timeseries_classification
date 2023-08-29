@@ -1,7 +1,5 @@
 ###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###
 #
-# 22/03/2022 mathieu.pelissie@ens-lyon.fr
-#
 # Functions for stock dynamics simulations
 #
 # functions_simu.R

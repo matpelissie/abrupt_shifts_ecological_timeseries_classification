@@ -1,3 +1,10 @@
+###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###
+#
+# Functions for trajectory classification
+#
+# functions_trajclass.R
+#
+###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###-###
 
 # I) Data preparation --------------------------------------------------------
 
@@ -527,9 +534,9 @@ shifts <- function(ts, abr_mtd, asd_thr, asd_chk,
 #' @param Y vector of the timeseries values
 #' @param X vector of the timesteps
 #' @param dataset two-column dataframe with timesteps and timeseries values
-#' @param interval_size
+#' @param interval_size set to 0.5 for timesteps regularly spaced by 1 unit
 #'
-#' @return two-row data frame with infos about the trajectory
+#' @return three-row data frame with infos about the trajectory
 #' (no change, linear, and polynomial)
 #'
 #' @export
@@ -537,12 +544,15 @@ shifts <- function(ts, abr_mtd, asd_thr, asd_chk,
 class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
                                    interval_size = 0.5){
 
+  ## Initiation and data check
   if (is.null(X) == TRUE & is.null(Y) == TRUE & is.null(dataset) == TRUE){
     stop("either 'dataset' or at least 'Y' and 'X' must be specified")
   }
+
   if (is.null(X) == TRUE & is.null(Y) == TRUE) {
     Y <- dataset[,2]
     X <- dataset[,1]
+
   } else {
     if (class(Y) == "character" & class(X) == "character") {
       if (is.null(dataset) == TRUE) {
@@ -551,7 +561,8 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
         Y <- dataset[, Y]
         X <- dataset[, X]
       }
-    } else{
+
+    } else {
       if (!(class(Y) %in% c("numeric","integer")) == TRUE &
           !(class(X) %in% c("numeric","integer")) == TRUE) {
         stop("'Y' and 'X' must be either characters or vector but 'class'
@@ -569,6 +580,8 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
   Y <- data$Y
   X <- data$X
 
+
+  ## Trajectory fitting
   # No change model:
   null.model <- lm(Y~1)
   nrmse_nch <- sqrt(sum(summary(null.model)$residuals^2)/length(Y))/sd(Y)
@@ -581,51 +594,62 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
 
   # Quadratic model:
   orthogonal_polynomial <- lm(Y~poly(X,2, raw=F))
-  nrmse_pol <- sqrt(sum(summary(orthogonal_polynomial)$residuals^2)/length(Y))/sd(Y)
+  nrmse_pol <- sqrt(sum(summary(orthogonal_polynomial)$residuals^2)/
+                      length(Y))/sd(Y)
   aic_pol <- MuMIn::AICc(orthogonal_polynomial)
 
+  ## Get relevant values for quadratic output
   # After getting Y = gamma*chi + delta*X' + epsilon with orthogonal polynomial
-  # we have to perform a variable change to obtain relevant values in the X interval
-  # for first_order_coefficient, second_order_coefficient and intercept,
-  # knowing that X'= alpha*X + beta
-  # and chi = eta*X'^2 + theta
+  # we have to perform a variable change to obtain relevant values
+  # in the X interval for first_order_coefficient, second_order_coefficient
+  # and intercept, knowing that X'= alpha*X + beta and chi = eta*X'^2 + theta
 
   gammab  <-  orthogonal_polynomial$coefficients[3]
   delta  <-  orthogonal_polynomial$coefficients[2]
   epsilon  <-  orthogonal_polynomial$coefficients[1]
 
-  alpha  <-  lm(orthogonal_polynomial$model[, 2][, 1]~X)$coef[2]
-  beta  <-  lm(orthogonal_polynomial$model[, 2][, 1]~X)$coef[1]
+  alpha  <-  lm(orthogonal_polynomial$model[, 2][, 1] ~ X)$coef[2]
+  beta  <-  lm(orthogonal_polynomial$model[, 2][, 1] ~ X)$coef[1]
 
-  eta  <-  1/lm((orthogonal_polynomial$model[, 2][, 1])^2~orthogonal_polynomial$model[, 2][, 2])$coef[2]
-  theta  <-  (-lm((orthogonal_polynomial$model[, 2][, 1])^2~orthogonal_polynomial$model[, 2][, 2])$coef[1])*eta
+  eta  <-  1/lm((orthogonal_polynomial$model[, 2][, 1])^2 ~
+                  orthogonal_polynomial$model[, 2][, 2])$coef[2]
+  theta  <-  (-lm((orthogonal_polynomial$model[, 2][, 1])^2 ~
+                    orthogonal_polynomial$model[, 2][, 2])$coef[1])*eta
 
-  Y2<-Y*(max(X)-min(X))/(max(Y)-min(Y)) # p2 and p3 are relevant when Y and X amplitudes are equivalent,
+  Y2 <- Y*(max(X)-min(X))/(max(Y)-min(Y))
+  # p2 and p3 are relevant when Y and X amplitudes are equivalent,
   # in particular when studying scaled-to-1 indices, Y and X amplitudes
   # may be very different, so we scaled the amplitudes to calculate p2 and p3
-  polynomial_orthonormal_basis<-lm(Y2~poly(X,2, raw=T))$coefficients
+  polynomial_orthonormal_basis <- lm(Y2~poly(X,2, raw=T))$coefficients
 
-  # quadratic case:
+  # Quadratic model output:
   classification <-
     data.frame(first_order_coefficient = (delta+2*beta*gammab*eta)*alpha,
-               first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
+               first_order_pvalue =
+                 summary(orthogonal_polynomial)$coefficients[2, 4],
                second_order_coefficient = (alpha^2)*gammab*eta,
-               second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
+               second_order_pvalue =
+                 summary(orthogonal_polynomial)$coefficients[3, 4],
                strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
                intercept = epsilon+beta*delta+(beta^2)*gammab*eta+gammab*theta,
                x_m = (X[length(X)]-X[1])/2+X[1],
-               p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta), # points of interest
-               p2 = (-polynomial_orthonormal_basis[2]+1)/(2*polynomial_orthonormal_basis[3]),
-               p3 = (-polynomial_orthonormal_basis[2]-1)/(2*polynomial_orthonormal_basis[3]),
+               # points of interest:
+               p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta),
+               p2 = (-polynomial_orthonormal_basis[2]+1)/
+                 (2*polynomial_orthonormal_basis[3]),
+               p3 = (-polynomial_orthonormal_basis[2]-1)/
+                 (2*polynomial_orthonormal_basis[3]),
                aic = aic_pol,
                nrmse = nrmse_pol)
 
-  # linear case:
+  # Linear model output:
   classification[2,] <-
     data.frame(first_order_coefficient = delta*alpha,
-               first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
+               first_order_pvalue =
+                 summary(orthogonal_polynomial)$coefficients[2, 4],
                second_order_coefficient = 0,
-               second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
+               second_order_pvalue =
+                 summary(orthogonal_polynomial)$coefficients[3, 4],
                strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
                intercept = epsilon+delta*beta,
                x_m = (X[length(X)]-X[1])/2+X[1],
@@ -635,12 +659,14 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
                aic = aic_lin,
                nrmse = nrmse_lin)
 
-  # no change case:
+  # No change model output:
   classification[3,] <-
     data.frame(first_order_coefficient = 0,
-               first_order_pvalue = summary(orthogonal_polynomial)$coefficients[2, 4],
+               first_order_pvalue =
+                 summary(orthogonal_polynomial)$coefficients[2, 4],
                second_order_coefficient = 0,
-               second_order_pvalue = summary(orthogonal_polynomial)$coefficients[3, 4],
+               second_order_pvalue =
+                 summary(orthogonal_polynomial)$coefficients[3, 4],
                strd_error=summary(orthogonal_polynomial)$coefficients[2, 2],
                intercept = null.model$coefficients,
                x_m = (X[length(X)]-X[1])/2+X[1],
@@ -652,64 +678,102 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
 
 
   # Significance of the coefficients:
-  if(summary(orthogonal_polynomial)$coefficients[3, 4] <= 0.05){  # quadratic case
-    classification$best_model <- c("best", NA, NA)
-  } else if(summary(orthogonal_polynomial)$coefficients[2, 4]<=0.05){ # linear case
-    classification$best_model <- c(NA, "best", NA)
-  } else { # no change case
-    classification$best_model <- c(NA, NA, "best")
+  if(summary(orthogonal_polynomial)$coefficients[3, 4] <= 0.05){
+    classification$best_model <- c("best", NA, NA) # quadratic model
+  } else if(summary(orthogonal_polynomial)$coefficients[2, 4]<=0.05){
+    classification$best_model <- c(NA, "best", NA) # linear model
+  } else {
+    classification$best_model <- c(NA, NA, "best") # no change model
   }
 
-  # classification$r.sq <- summary(orthogonal_polynomial)$adj.r.squared # retrieve the adjusted coefficient of determination
+  # retrieve the adjusted coefficient of determination
+  # classification$r.sq <- summary(orthogonal_polynomial)$adj.r.squared
 
+  # Give classification for each model fitted:
   for (i in 1:3){
 
-    # compute the derivative at xm-delta and at xm + delta with delta being half of the input interval size
-    derivative  <-  2*(classification$x_m[i]-(X[length(X)]-X[1])*(interval_size/2))*classification$second_order_coefficient[i]+classification$first_order_coefficient[i]
-    derivative2  <-  2*(classification$x_m[i]+(X[length(X)]-X[1])*(interval_size/2))*classification$second_order_coefficient[i]+classification$first_order_coefficient[i]
+    # Compute the derivative at xm-delta and at xm + delta with delta being
+    # half of the input interval size
+    derivative <-
+      2*(classification$x_m[i] - (X[length(X)]-X[1])*(interval_size/2))*
+      classification$second_order_coefficient[i] +
+      classification$first_order_coefficient[i]
+    derivative2 <-
+      2*(classification$x_m[i] + (X[length(X)]-X[1])*(interval_size/2))*
+      classification$second_order_coefficient[i] +
+      classification$first_order_coefficient[i]
 
 
-    if(sign(derivative) != sign(derivative2) | i==3){ # non consistent direction around x_m
+    if(sign(derivative) != sign(derivative2) | i==3){
+      # non consistent direction around x_m
       classification$derivative[i]  <-  NA
       classification$intercept_derivative[i]  <-  NA
-    }else{ # consistent direction around x_m
-      classification$derivative[i]  <-  mean(c(derivative, derivative2))
-      classification$intercept_derivative[i]  <-  (classification$second_order_coefficient[i]*classification$x_m[i]^2+classification$first_order_coefficient[i]*classification$x_m[i]+classification$intercept[i])-classification$x_m[i]*classification$derivative[i]
+
+    } else {
+      # consistent direction around x_m
+      classification$derivative[i] <- mean(c(derivative, derivative2))
+      classification$intercept_derivative[i] <-
+        (classification$second_order_coefficient[i]*classification$x_m[i]^2+
+           classification$first_order_coefficient[i]*classification$x_m[i]+
+           classification$intercept[i]) -
+        classification$x_m[i]*classification$derivative[i]
     }
 
-    # compute the derivative of the curvature function
-    classification$derivated_curvature[i]  <-  -12*(classification$second_order_coefficient[i]^2)*(2*classification$second_order_coefficient[i]*classification$x_m[i]+classification$first_order_coefficient[i])*(classification$second_order_coefficient[i]/abs(classification$second_order_coefficient[i]))/
-      ((1+(2*classification$second_order_coefficient[i]*classification$x_m[i]+classification$first_order_coefficient[i])^2)^(2.5))
+    # Compute the derivative of the curvature function:
+    classification$derivated_curvature[i] <-
+      -12*(classification$second_order_coefficient[i]^2)*
+      (2*classification$second_order_coefficient[i]*classification$x_m[i]+
+         classification$first_order_coefficient[i])*
+      (classification$second_order_coefficient[i]/
+         abs(classification$second_order_coefficient[i]))/
+      ((1+(2*classification$second_order_coefficient[i]*classification$x_m[i]+
+             classification$first_order_coefficient[i])^2)^(2.5))
 
-    if(classification$second_order_pvalue[i]>0.05 & i != 1){ # keep derivated curvature even if not significant for polynomial fit
+    # Keep derivated curvature even if not significant for polynomial fit:
+    if(classification$second_order_pvalue[i]>0.05 & i != 1){
       classification$derivated_curvature[i] <- NA
     }
 
-    classification$direction[i] <- NA # classify the direction
-    classification$direction[i][which(classification$derivative[i] > 0)] <- "increase"
-    classification$direction[i][which(classification$derivative[i] < 0)] <- "decrease"
-    classification$direction[i][which(is.na(classification$derivative[i]))] <- "stable"
-    classification$direction[i][which(as.numeric(classification$first_order_pvalue[i])>0.05 & as.numeric(classification$second_order_pvalue[i])>0.05)] <- "stable"
+    # Classify the direction:
+    classification$direction[i] <- NA
+    classification$direction[i][which(
+      classification$derivative[i] > 0)] <- "increase"
+    classification$direction[i][which(
+      classification$derivative[i] < 0)] <- "decrease"
+    classification$direction[i][which(
+      is.na(classification$derivative[i]))] <- "stable"
+    classification$direction[i][which(
+      as.numeric(classification$first_order_pvalue[i])>0.05 &
+        as.numeric(classification$second_order_pvalue[i])>0.05)] <- "stable"
 
-    classification$acceleration[i] <- NA # classify the acceleration
-    classification$acceleration[i][which(classification$derivated_curvature[i] < 0)] <- "accelerated"
-    classification$acceleration[i][which(classification$derivated_curvature[i] > 0)] <- "decelerated"
-    classification$acceleration[i][which(classification$direction[i] == "stable" &
-                                           classification$second_order_coefficient[i] < 0)] <- "concave"
-    classification$acceleration[i][which(classification$direction[i] == "stable" &
-                                           classification$second_order_coefficient[i] > 0)] <- "convex"
-    classification$acceleration[i][which(is.na(classification$derivated_curvature[i]))] <- "constant"
+    # Classify the acceleration:
+    classification$acceleration[i] <- NA
+    classification$acceleration[i][which(
+      classification$derivated_curvature[i] < 0)] <- "accelerated"
+    classification$acceleration[i][which(
+      classification$derivated_curvature[i] > 0)] <- "decelerated"
+    classification$acceleration[i][which(
+      classification$direction[i] == "stable" &
+        classification$second_order_coefficient[i] < 0)] <- "concave"
+    classification$acceleration[i][which(
+      classification$direction[i] == "stable" &
+        classification$second_order_coefficient[i] > 0)] <- "convex"
+    classification$acceleration[i][which(
+      is.na(classification$derivated_curvature[i]))] <- "constant"
 
-    classification$shape_class[i] <- paste(classification$direction[i], # give the final classification combining direction and acceleration
+    # Give the final classification combining direction and acceleration:
+    classification$shape_class[i] <- paste(classification$direction[i],
                                            classification$acceleration[i],
                                            sep="_")
   }
 
+  # To remove what corresponds to one useless parameter:
   if(classification$shape_class[2] == "stable_constant"){
-    aic_lin <- classification[2,]$aic <- AIC(linear.model)-2 # To remove what corresponds to one useless parameter
+    aic_lin <- classification[2,]$aic <- MuMIn::AICc(linear.model)-2
   }
 
-  linear.model.summary <- summary(linear.model) # provide the linear approach results for comparison
+  # Provide the linear approach results for comparison:
+  linear.model.summary <- summary(linear.model)
 
   classification$linear_slope <- linear.model.summary$coefficients[2, 1]
   classification$linear_slope_pvalue <- linear.model.summary$coefficients[2, 4]
@@ -728,11 +792,11 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
 
 #' Markov-chain simulations of classification
 #'
-#' @param dataset data frame ready for analyses
+#' @param dataset data frame (timeseries) ready for analyses
 #' @param niter number of MC simulations (option to run more than one disabled)
 #' @param ref_year reference year (default the middle year of the interval)
-#' @param correction logical, to the reference value to 100 and
-#' correct values below 0 before logtransformation
+#' @param correction logical, to the reference value to 100 and correct values
+#' below 0 before logtransformation
 #' @param fit character to specify the type of fit
 #' (either "nch", "lin", or "pol", default is best fit)
 #'
@@ -744,9 +808,9 @@ mc_trend <- function(dataset,
                      niter,
                      ref_year=NULL,
                      correction=FALSE,
-                     fit=NULL)
-{
+                     fit=NULL){
 
+  # Initiate output data frame:
   b <- data.frame(t(rep(NA, 15)))
   attributes(b)$names <- c("second_order_coefficient",
                            "first_order_coefficient",
@@ -765,6 +829,7 @@ mc_trend <- function(dataset,
                            "nrmse"
   )
 
+  # Define reference year and correct accordingly if requested:
   if(is.null(ref_year)){
     ref_year <- dataset$X[round(nrow(dataset)/2)+1]
   }
@@ -782,18 +847,23 @@ mc_trend <- function(dataset,
       }
 
       if(ref_value<1){
-        stop("use 'correction = FALSE' when value of the reference year is strictly below 1")
+        stop("use 'correction = FALSE' when value of the
+             reference year is strictly below 1")
       }
 
       dataset$Y <- 100*dataset$Y
-      if(length(which(dataset$Y <= 1))>0){print("caution, low values corrected, if strongly decreasing or increasing trajectory, use respectively  first or last year as referential")}
+      if(length(which(dataset$Y <= 1))>0){
+        print("caution, low values corrected, if strongly decreasing or
+              increasing trajectory, use respectively  first or last year
+              as referential")}
       dataset$Y[which(dataset$Y <= 1)] <- 1
-
     }
+
     if(ref_value == 100){
       dataset$Y[which(dataset$Y <= 1)] <- 1
     }
     dataset$log <- log(dataset$Y) # log transform Y
+
   }
 
   if(correction == FALSE){
@@ -804,6 +874,7 @@ mc_trend <- function(dataset,
     dataset$log <- dataset$Y
   }
 
+  # Run classification (option to make several normal sampling of Y disabled):
   for(i in 1:niter){
 
     if (niter==1){ # no resampling if only one iteration
@@ -813,8 +884,9 @@ mc_trend <- function(dataset,
     if(correction == TRUE){
       # set reference year value to 100 and retransform values if logtranformed
       a <- exp(a)/exp(a[which(dataset$X == ref_year)])*100
-    }else{a <- a-min_value}
+    } else {a <- a-min_value}
 
+    # Run classification:
     a <- class_trajectory_mod(a, dataset$X)
 
     best_model <- a %>%
@@ -822,6 +894,7 @@ mc_trend <- function(dataset,
       rownames() %>%
       sub("Y_","",.)
 
+    # Keep the fitting output chosen:
     if(is.null(fit)){
       a <- a %>% dplyr::filter(best_model=="best")
     }else if(fit == "nch"){
@@ -833,33 +906,36 @@ mc_trend <- function(dataset,
     }
 
 
+    # Store classification output from each iteration (only one here):
     b[i, 1] <- a$second_order_coefficient
     b[i, 2] <- a$first_order_coefficient
     b[i, 3] <- a$strd_error
     b[i, 4] <- a$shape_class
     b[i, 5] <- a$intercept
+
+    # Record changing point inside timeseries:
     if(a$second_order_coefficient!=0){
-      if(findInterval(a$p1,  c(min(dataset$X), max(dataset$X))) == 1){ # record changing point inside timeseries
-        b[i, 6] <- a$p1}else{b[i, 6] <- NA}
+      if(findInterval(a$p1,  c(min(dataset$X), max(dataset$X))) == 1){
+        b[i, 6] <- a$p1} else {b[i, 6] <- NA}
       if(findInterval(a$p2,  c(min(dataset$X), max(dataset$X))) == 1){
-        b[i, 7] <- a$p2}else{b[i, 7] <- NA}
+        b[i, 7] <- a$p2} else {b[i, 7] <- NA}
       if(findInterval(a$p3,  c(min(dataset$X), max(dataset$X))) == 1){
-        b[i, 8] <- a$p3}else{b[i, 8] <- NA}
-    }else{
+        b[i, 8] <- a$p3} else {b[i, 8] <- NA}
+
+    } else {
       b[i, 6] <- NA
       b[i, 7] <- NA
       b[i, 8] <- NA
     }
+
     b[i, 9] <- a$linear_slope_pvalue
     b[i, 10] <- a$linear_slope
     b[i, 12] <- a$aic
     b[i, 13] <- best_model
     b[i, 14] <- a$second_order_pvalue
     b[i, 15] <- a$nrmse
-    # b[i, 12] <- a$aic_lin
-    # b[i, 13] <- a$aic_pol
-    # b[i, 14] <- a$aic_max_shape
   }
+
   b[, 4] <- as.factor(b[, 4])
   b[, 11] <- rep(ref_year, nrow(b))
 
@@ -867,17 +943,18 @@ mc_trend <- function(dataset,
 }
 
 
+
 #' Summary of MC simulations of classification
 #'
-#' @param sets list of data frame ready for analyses
+#' @param sets list of data frame (timeseries) ready for analyses
 #' @param niter number of MC simulations (option to run more than one disabled)
 #' @param ref_year reference year (default the middle year of the interval)
-#' @param correction logical, to the reference value to 100 and
-#' correct values below 0 before logtransformation
+#' @param correction logical, to the reference value to 100 and correct values
+#' below 0 before logtransformation
 #' @param fit character to specify the type of fit
 #' (either "nch", "lin", or "pol", default is best fit)
 #'
-#' @return data frame with as many rows as simulations
+#' @return data frame with as many rows as time series
 #'
 #' @export
 
@@ -889,75 +966,99 @@ res_trend <- function(sets,
 
   res <- data.frame()
 
+  # Run classification for each timeseries in the list:
   for (i in seq_len(length(sets))){
 
-    if(nrow(sets[[i]])>3){
+    if(nrow(sets[[i]])>3){ # Errors occur if timeseries length is below 4
 
-      simulated <- mc_trend(sets[[i]], niter, ref_year=NULL, correction=FALSE, fit)
-      simulated <- simulated %>% dplyr::mutate(best_model=as.factor(best_model))
+      simulated <- mc_trend(sets[[i]], niter, ref_year=NULL,
+                            correction=FALSE, fit) %>%
+        dplyr::mutate(best_model=as.factor(best_model))
 
-      if(length(levels(simulated$shape_class))>1){ # test the significance of the most numerous class
-        test <- RVAideMemoire::multinomial.theo.multcomp(simulated$shape_class, p = rep(1/length(levels(simulated$shape_class)),
-                                                                                        length(levels(simulated$shape_class))), prop=TRUE)
-        # Not working if there's no linear alternative among the best shapes
-        #   if(min(test$p.value2[test$observed>test$expected])<0.05){
-        #     max_shape <- row.names(test$p.value)[which(test$observed == max(test$observed[test$observed>test$expected]))]
-        #   }else{ # if non significant class, the linear one is chosen
-        #     max_shape <-c("increase_constant", "decrease_constant", "stable_constant")[which.max(c(length(grep("increase", simulated$shape_class)), length(grep("decrease", simulated$shape_class)), length(grep("stable", simulated$shape_class))))]
-        #   }
+      # Retrieve best shape and model (only one iteration):
+      if(length(levels(simulated$shape_class)) == 1){
+        max_shape <- levels(simulated$shape_class)
+        best_model <- levels(simulated$best_model)}
 
-        # So temporarily not relying on the test
-        max_shape <- row.names(test$p.value)[which(test$observed == max(test$observed[test$observed>test$expected]))]
-        if (grepl("constant", max_shape)){
-          best_model <- "lin"
-        }else{best_model <- "pol"}
-      }
+      # Summarize classification outputs (useful if multiple iterations):
+      alpha2 <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 1]))
+      sd_alpha2 <- sd(
+        as.numeric(simulated[simulated$shape_class == max_shape, 1]))
+      alpha1 <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 2]))
+      sd_alpha1 <- sd(
+        as.numeric(simulated[simulated$shape_class == max_shape, 2]))
+      inter <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 5]))
+      strd <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 3]))
+      p_1 <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 6]), na.rm=T)
+      sd_p_1 <- sd(
+        as.numeric(simulated[simulated$shape_class == max_shape, 6]), na.rm=T)
+      if(!is.na(p_1) &&
+          findInterval(p_1, c(min(sets[[i]]$X), max(sets[[i]]$X))) != 1){
+        p_1 <- sd_p_1 <- as.numeric(NA)}
+      p_2 <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 7]), na.rm=T)
+      sd_p_2 <- sd(
+        as.numeric(simulated[simulated$shape_class == max_shape, 7]), na.rm=T)
+      if(!is.na(p_2) &&
+          findInterval(p_2, c(min(sets[[i]]$X), max(sets[[i]]$X))) != 1){
+        p_2 <- sd_p_2 <- as.numeric(NA)}
+      p_3 <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 8]), na.rm=T)
+      sd_p_3 <- sd(
+        as.numeric(simulated[simulated$shape_class == max_shape, 8]), na.rm=T)
+      if(!is.na(p_3) &&
+          findInterval(p_3, c(min(sets[[i]]$X), max(sets[[i]]$X))) != 1){
+        p_3 <- sd_p_3 <- as.numeric(NA)}
+      slope_p_value <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 9]), na.rm=T)
+      slope <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 10]), na.rm=T)
+      slope_sd <- sd(
+        as.numeric(simulated[simulated$shape_class == max_shape, 10]), na.rm=T)
+      aic <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 12]))
+      second_order_pvalue <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 14]), na.rm=T)
+      nrmse <- mean(
+        as.numeric(simulated[simulated$shape_class == max_shape, 15]))
 
-      if(length(levels(simulated$shape_class)) == 1){max_shape <- levels(simulated$shape_class)
-      best_model <- levels(simulated$best_model)}
-
-      alpha2 <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 1]))
-      sd_alpha2 <- sd(as.numeric(simulated[simulated$shape_class == max_shape, 1]))
-      alpha1 <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 2]))
-      sd_alpha1 <- sd(as.numeric(simulated[simulated$shape_class == max_shape, 2]))
-      inter <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 5]))
-      strd <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 3]))
-      p_1 <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 6]), na.rm=T)
-      sd_p_1 <- sd(as.numeric(simulated[simulated$shape_class == max_shape, 6]), na.rm=T)
-      if( !is.na(p_1) && findInterval(p_1, c(min(sets[[i]]$X), max(sets[[i]]$X))) != 1){p_1 <- sd_p_1 <- as.numeric(NA)}
-      p_2 <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 7]), na.rm=T)
-      sd_p_2 <- sd(as.numeric(simulated[simulated$shape_class == max_shape, 7]), na.rm=T)
-      if( !is.na(p_2) && findInterval(p_2, c(min(sets[[i]]$X), max(sets[[i]]$X))) != 1){p_2 <- sd_p_2 <- as.numeric(NA)}
-      p_3 <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 8]), na.rm=T)
-      sd_p_3 <- sd(as.numeric(simulated[simulated$shape_class == max_shape, 8]), na.rm=T)
-      if( !is.na(p_3) && findInterval(p_3, c(min(sets[[i]]$X), max(sets[[i]]$X))) != 1){p_3 <- sd_p_3 <- as.numeric(NA)}
-      slope_p_value <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 9]), na.rm=T)
-      slope <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 10]), na.rm=T)
-      slope_sd <- sd(as.numeric(simulated[simulated$shape_class == max_shape, 10]), na.rm=T)
-      aic <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 12]))
-      second_order_pvalue <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 14]), na.rm=T)
-      nrmse <- mean(as.numeric(simulated[simulated$shape_class == max_shape, 15]))
-
-    }else{alpha2 <- alpha1 <- sd_alpha1 <- inter <- strd <- p_1 <- sd_p_1 <- p_2 <- sd_p_2 <- p_3 <- sd_p_3 <- max_shape <- slope_p_value <- slope <- slope_sd <- aic <- best_model <- second_order_pvalue <- nrmse <- NA}
+    } else { # If the timeseries is below 4 timesteps:
+      alpha2 <- alpha1 <- sd_alpha1 <- inter <- strd <- p_1 <- sd_p_1 <- p_2 <-
+        sd_p_2 <- p_3 <- sd_p_3 <- max_shape <- slope_p_value <- slope <-
+        slope_sd <- aic <- best_model <- second_order_pvalue <- nrmse <- NA}
 
     ref_year <- simulated[1,11]
 
-    res <- res %>% rbind(data.frame(alpha2, alpha1, sd_alpha1, inter, strd, p_1, sd_p_1, p_2, sd_p_2, p_3, sd_p_3, second_order_pvalue, slope_p_value, slope, slope_sd, nrmse, ref_year, max_shape=as.factor(max_shape), aic=aic, best_model=best_model, best_class=NA, trend=NA))
 
     res <- res %>%
-      dplyr::mutate(
-        best_class = ifelse(!is.na(max_shape),
-                            dplyr::case_when(
-                              stringr::str_detect(max_shape,"stable_constant") ~ "no_change",
-                              stringr::str_detect(max_shape, "constant") ~ "linear",
-                              stringr::str_detect(max_shape, "acc|dec|conc|conv") ~ "quadratic"
-                            ), NA),
-        trend = ifelse(!is.na(max_shape),
-                       sub("_.*", "", max_shape), NA)
-      )
+      rbind(data.frame(alpha2, alpha1, sd_alpha1, inter, strd, p_1, sd_p_1,
+                       p_2, sd_p_2, p_3, sd_p_3, second_order_pvalue,
+                       slope_p_value, slope, slope_sd, nrmse, ref_year,
+                       max_shape=as.factor(max_shape), aic=aic,
+                       best_model=best_model, best_class=NA, trend=NA))
 
   }
 
+  # Define best class and trend from best shape:
+  res <- res %>%
+    dplyr::mutate(
+      best_class = ifelse(!is.na(max_shape),
+                          dplyr::case_when(
+                            stringr::str_detect(
+                              max_shape,"stable_constant") ~ "no_change",
+                            stringr::str_detect(
+                              max_shape, "constant") ~ "linear",
+                            stringr::str_detect(
+                              max_shape, "acc|dec|conc|conv") ~ "quadratic"
+                          ), NA),
+      trend = ifelse(!is.na(max_shape),
+                     sub("_.*", "", max_shape), NA)
+    )
 
   return(res)
 }
@@ -969,20 +1070,32 @@ res_trend <- function(sets,
 #' @param sets list of data frame ready for analyses
 #' @param abr_mtd vector with abbreviation(s) corresponding to the
 #' breakpoints method(s) to use ("asd" and/or "chg")
-#' @param asd_thr numeric threshold for as_detect method
-#' @param asd_chk logical paramater for check_true_shift in asd_fct
+#' @param asd_thr (asdetect) numeric threshold in detection timeseries
+#' @param asd_chk (asdetect) logical parameter for check_true_shift in asd_fct
+#' @param lowwl (asdetect) lowest window length used in algorithm (default 5)
+#' @param highwl (asdetect) highest window length used in algorithm.
+#' If 'default' then highwl is set to 1/3 of the length of timeseries.
+#' @param mad_thr (asdetect) threshold of anomalous change in number
+#' of median absolute deviations (default 3)
+#' @param mad_cst (asdetect) correction factor for asymptotic normal consistency
 #'
-#' @return data frame with results of breakpoints analyses
+#' @return data frame with results of breakpoints analyses and a list of results
+#' by breakpoint method
+#'
 #' @export
 
-abrupt_classif <- function(sets, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst){
+abrupt_classif <- function(sets, abr_mtd,
+                           asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst){
 
   ts <- sets %>%
     lapply(function(x) dplyr::select(x, c(X,Y)) %>% dplyr::rename(year=X))
 
+  # Perform breakpoint analyses on each timeseries:
   shifts_res <- ts %>%
-    lapply(function(x) shifts(x, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst))
+    lapply(function(x) shifts(x, abr_mtd, asd_thr, asd_chk,
+                              lowwl, highwl, mad_thr, mad_cst))
 
+  #
   abt_res <- list()
   for(k in abr_mtd){
 
@@ -1019,22 +1132,34 @@ abrupt_classif <- function(sets, abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_t
 #' @return data frame with the results of different trajectory fitting,
 #' @export
 
-fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst, apriori){
+fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
+                       mad_thr, mad_cst, apriori){
 
   # Running the different model fitting:
   res_nch <- res_trend(sets, niter=1, correction=FALSE, fit="nch")
   res_lin <- res_trend(sets, niter=1, correction=FALSE, fit="lin")
   res_pol <- res_trend(sets, niter=1, correction=FALSE, fit="pol")
-  res_abt <- abrupt_classif(sets, abr_mtd=abr_mtd, asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst)
-  lengths <- data.frame(first = sapply(sets, function(x) min(x$X), simplify="array"),
-                        last = sapply(sets, function(x) max(x$X), simplify="array"),
-                        length = sapply(sets, function(x) nrow(x), simplify="array"))
+  res_abt <- abrupt_classif(sets, abr_mtd=abr_mtd, asd_thr, asd_chk,
+                            lowwl, highwl, mad_thr, mad_cst)
+  lengths <- data.frame(first = sapply(sets, function(x) min(x$X),
+                                       simplify="array"),
+                        last = sapply(sets, function(x) max(x$X),
+                                      simplify="array"),
+                        length = sapply(sets, function(x) nrow(x),
+                                        simplify="array"))
 
   # Combine all results:
   summ_res <- cbind(
-    res_nch %>% dplyr::select(contains("max_shape")|contains("aic")|contains("trend")|contains("nrmse")) %>% dplyr::rename_with(~str_c(., "_nch")),
-    res_lin %>% dplyr::select(contains("max_shape")|contains("aic")|contains("trend")|contains("nrmse")) %>% dplyr::rename_with(~str_c(., "_lin")),
-    res_pol %>% dplyr::select(contains("max_shape")|contains("aic")|contains("best_model")|contains("trend")|contains("nrmse")) %>% dplyr::rename_with(~str_c(., "_pol")),
+    res_nch %>% dplyr::select(contains("max_shape")|contains("aic")|
+                                contains("trend")|contains("nrmse")) %>%
+      dplyr::rename_with(~str_c(., "_nch")),
+    res_lin %>% dplyr::select(contains("max_shape")|contains("aic")|
+                                contains("trend")|contains("nrmse")) %>%
+      dplyr::rename_with(~str_c(., "_lin")),
+    res_pol %>% dplyr::select(contains("max_shape")|contains("aic")|
+                                contains("best_model")|contains("trend")|
+                                contains("nrmse")) %>%
+      dplyr::rename_with(~str_c(., "_pol")),
     do.call("cbind",
             lapply(abr_mtd, function(x) res_abt$abt_res[[x]] %>%
                      dplyr::select(contains("brk")|aic|trend|nrmse) %>%

@@ -1,7 +1,5 @@
 ###-###-###-###-###-###-###-###-###
 #
-# 04/07/2023 mathieu.pelissie@umontpellier.fr
-#
 # Run trajectory classification
 #
 # 02_run_classification.R
