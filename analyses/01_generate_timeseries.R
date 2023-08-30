@@ -7,9 +7,7 @@
 ###-###-###-###-###-###-###-###-###
 
 source("analyses/00_packages.R")
-source("R/functions_simu.R")
 source("R/functions_trajclass.R")
-source("R/functions_output.R")
 
 set.seed(2)
 

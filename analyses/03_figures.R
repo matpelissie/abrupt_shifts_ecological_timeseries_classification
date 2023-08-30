@@ -8,10 +8,8 @@
 
 
 library('tidyverse')
-source("R/functions_simu.R")
+source("analyses/00_packages.R")
 source("R/functions_trajclass.R")
-source("R/functions_output.R")
-
 
 dir.create("analyses/figs", showWarnings = FALSE)
 dir.create("analyses/figs/supp_mat", showWarnings = FALSE)
@@ -223,12 +221,12 @@ df_list_bird <- df_bird %>%
 df_list_hort <- df_list_bird["Emberiza_hortulana"]
 
 # Run the classification:
-output_bird <- run_classif_data(df_list_hort, min_len=20, str="aic_asd",
-                           normalize=FALSE, showplots=TRUE, save_plot=FALSE,
-                           run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
-                           group="PECBMS_species_name", time="Year",
-                           variable="Index", outplot=TRUE, ind_plot="abt",
-                           dirname="analyses/")
+output_bird <- run_classif_data(df_list=df_list_hort, min_len=20, asd_thr=0.15,
+                                str="aic_asd", showplots=TRUE, save_plot=FALSE,
+                                run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
+                                group="PECBMS_species_name", time="Year",
+                                variable="Index", outplot=TRUE, ind_plot="abt",
+                                dirname="analyses/")
 
 # Plot the best trajectory shape:
 p_bird <- output_bird$outlist$Emberiza_hortulana$class_plot$plots[[1]] +
@@ -259,11 +257,12 @@ df_list_odo <- df_odo_brit %>%
 df_list_erth <- df_list_odo["Erythromma viridulum"]
 
 # Run the classification:
-output_odo <- run_classif_data(df_list_erth, min_len=20, str="aic_asd",
-                           normalize=FALSE, showplots=TRUE, save_plot=FALSE,
-                           run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
-                           group="species", time="year", variable="index",
-                           outplot=TRUE, ind_plot="abt", dirname="analyses/")
+output_odo <- run_classif_data(df_list=df_list_erth, min_len=20, asd_thr=0.15,
+                               str="aic_asd", showplots=TRUE, save_plot=FALSE,
+                               run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
+                               group="species", time="year", variable="index",
+                               outplot=TRUE, ind_plot="abt",
+                               dirname="analyses/")
 
 # Plot the best trajectory shape:
 p_odo <- output_odo$outlist$`Erythromma viridulum`$class_plot$plots[[1]] +
@@ -971,8 +970,8 @@ df_list_bird <- df_bird %>%
 df_list_grf <- df_list_bird["Chloris_chloris"]
 
 # Run the classification:
-output_bird <- run_classif_data(df_list_grf, min_len=20, str="aic_asd",
-                                normalize=FALSE, showplots=TRUE,
+output_bird <- run_classif_data(df_list=df_list_grf, min_len=20, asd_thr=0.15,
+                                str="aic_asd", showplots=TRUE,
                                 run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                 group="PECBMS_species_name", time="Year",
                                 variable="Index", outplot=TRUE, ind_plot=NULL,
@@ -1008,8 +1007,8 @@ df_list_odo <- df_odo_brit %>%
 df_list_plty <- df_list_odo["Platycnemis pennipes"]
 
 # Run the classification:
-output_odo <- run_classif_data(df_list_plty, min_len=20, str="aic_asd",
-                               normalize=FALSE, showplots=TRUE,
+output_odo <- run_classif_data(df_list=df_list_plty, min_len=20, asd_thr=0.15,
+                               str="aic_asd", showplots=TRUE,
                                run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                group="species", time="year", variable="index",
                                outplot=TRUE, ind_plot=NULL,

@@ -8,10 +8,7 @@
 
 
 source("analyses/00_packages.R")
-source("R/functions_simu.R")
-source("R/functions_output.R")
 source("R/functions_trajclass.R")
-
 
 dir.create("analyses/classif", showWarnings = FALSE)
 dir.create("analyses/classif/ts_example", showWarnings = FALSE)
