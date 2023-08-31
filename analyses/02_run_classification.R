@@ -76,7 +76,7 @@ asd_thr <- rep(0.15,5) # but won't be used
 
 for (l in 1:length(name)){
 
-  simu_list <- readRDS(paste0("data/03_simulations/all_simu_", name[l], ".rds"))
+  simu_list <- readRDS(paste0("data/00_simu/all_simu_", name[l], ".rds"))
 
   # Run classification in parallel:
   classif <-
@@ -237,7 +237,7 @@ for (j in 1:nrow(asd_thr_list)){ # For each threshold value
 
   for (l in 1:length(name)){ # For each length
 
-    simu_list <- readRDS(paste0("data/03_simulations/all_simu_",name[l],".rds"))
+    simu_list <- readRDS(paste0("data/00_simu/all_simu_",name[l],".rds"))
 
     # Run classification in parallel:
     classif <- parallel::mclapply(
