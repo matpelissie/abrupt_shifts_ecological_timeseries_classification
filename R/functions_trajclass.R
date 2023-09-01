@@ -485,9 +485,6 @@ ASS_row <- function(Ts, rval, P, H, K, Fmax, Fstep, TBhigh){
       init <- max(init, 10^(-5)) # to avoid reaching zero
 
       row_inc[paste0("r", rval), paste0("F", j)] <- init*K
-      stab_inc[paste0("r", rval), paste0("F", j)] <- simu %>%
-        dplyr::pull("EIG") %>%
-        tail(1)
 
     } else {
       states_inc[paste0("r",rval), paste0("F",j)] <- "unfeasible"
@@ -514,15 +511,6 @@ ASS_row <- function(Ts, rval, P, H, K, Fmax, Fstep, TBhigh){
     dplyr::mutate(r = sub("r","",r) %>% as.numeric(),
                   F = as.numeric(F))
 
-  stab_inc_long <- stab_inc %>%
-    tibble::rownames_to_column("r") %>%
-    tidyr::pivot_longer(cols = !r,
-                        names_to = "F",
-                        names_prefix = "F",
-                        values_to = "stab_inc") %>%
-    dplyr::mutate(r = sub("r","",r) %>% as.numeric(),
-                  F = as.numeric(F))
-
   # Find equilibrium for decreasing F & low starting biomass:
   for (j in rev(Fseq)){
 
@@ -541,8 +529,6 @@ ASS_row <- function(Ts, rval, P, H, K, Fmax, Fstep, TBhigh){
       init <- max(init, 10^(-5)) # to avoid reaching zero
 
       row_dec[paste0("r", rval), paste0("F", j)] <- init*K
-      stab_dec[paste0("r", rval), paste0("F", j)] <- simu %>%
-        dplyr::pull("EIG") %>% tail(1)
 
     } else {
       states_dec[paste0("r",rval), paste0("F",j)] <- "unfeasible"
@@ -569,22 +555,11 @@ ASS_row <- function(Ts, rval, P, H, K, Fmax, Fstep, TBhigh){
     dplyr::mutate(r = sub("r","",r) %>% as.numeric(),
                   F = as.numeric(F))
 
-  stab_dec_long <- stab_dec %>%
-    tibble::rownames_to_column("r") %>%
-    tidyr::pivot_longer(cols = !r,
-                        names_to = "F",
-                        names_prefix = "F",
-                        values_to = "stab_dec") %>%
-    dplyr::mutate(r = sub("r","",r) %>% as.numeric(),
-                  F = as.numeric(F))
-
   # Compare equilibria:
   bif_wide <- row_inc_long %>%
     dplyr::left_join(row_dec_long, by=c("r", "F")) %>%
     dplyr::left_join(states_inc_long, by=c("r", "F")) %>%
     dplyr::left_join(states_dec_long, by=c("r", "F")) %>%
-    dplyr::left_join(stab_inc_long, by=c("r", "F")) %>%
-    dplyr::left_join(stab_dec_long, by=c("r", "F")) %>%
     # arbitrary threshold of 10^(-1) for equal equilibrium value:
     dplyr::mutate(ASS = ifelse(abs(value_inc - value_dec)>10^(-1),
                                TRUE, FALSE)) %>%

@@ -63,7 +63,8 @@ for (l in 1:length(name)){
                   "mat_list"=mat_list)
 
   saveRDS(outlist_aicasd, paste0("analyses/classif/library/outlist_",
-                                 name[l],"_",str,"_thr",asd_thr[l],".rds"))
+                                 name[l],"_",str,"_thr",asd_thr[l],
+                                 "_loo",run_loo,".rds"))
 }
 print("1/4: Full classification done!")
 

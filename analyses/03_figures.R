@@ -137,11 +137,11 @@ dev.off()
 lib_dir <- "analyses/classif/library/"
 
 # Make confusion matrices for classification outputs with AICc only:
-p100_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l100_aic.rds"),
+p100_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l100_aic_looTRUE.rds"),
                           "100 timepoints")
-p50_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l50_1_aic.rds"),
+p50_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l50_1_aic_looTRUE.rds"),
                          "50 timepoints")
-p20_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l20_1_aic.rds"),
+p20_aic <- conf_mat_pool(paste0(lib_dir, "outlist_l20_1_aic_looTRUE.rds"),
                          "20 timepoints")
 
 # Make confusion matrices for classification outputs with AICc + asdetect:
@@ -163,7 +163,7 @@ cowplot::plot_grid(p100_aic$gtable, p50_aic$gtable, p20_aic$gtable,
 dev.off()
 
 # Make confusion matrices with colour scale lengend:
-p100_aic_leg <- conf_mat_pool(paste0(lib_dir, "outlist_l100_aic.rds"),
+p100_aic_leg <- conf_mat_pool(paste0(lib_dir, "outlist_l100_aic_looTRUE.rds"),
                               "100 timepoints", show_legend = TRUE)
 legend <- p100_aic_leg$gtable$grobs[[5]]
 
@@ -313,9 +313,9 @@ dev.off()
 lib_dir <- "analyses/classif/library/"
 
 # Load classification output:
-outlist_aic_l100 <- readRDS(paste0(lib_dir,"outlist_l100_aic.rds"))
-outlist_aic_l50 <- readRDS(paste0(lib_dir,"outlist_l50_1_aic.rds"))
-outlist_aic_l20 <- readRDS(paste0(lib_dir,"outlist_l20_1_aic.rds"))
+outlist_aic_l100 <- readRDS(paste0(lib_dir,"outlist_l100_aic_looTRUE.rds"))
+outlist_aic_l50 <- readRDS(paste0(lib_dir,"outlist_l50_1_aic_looTRUE.rds"))
+outlist_aic_l20 <- readRDS(paste0(lib_dir,"outlist_l20_1_aic_looTRUE.rds"))
 
 outlist_aic_0.15 <- list("l100"=outlist_aic_l100,
                          "l50"=outlist_aic_l50,
@@ -451,11 +451,11 @@ for (thr in seq(0,1,0.05)){
 
 
 # Load classification output for AICc only:
-outlist_aic_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic.rds")
-outlist_aic_l25 <- readRDS("analyses/classif/library/outlist_l25_1_aic.rds")
-outlist_aic_l33 <- readRDS("analyses/classif/library/outlist_l33_1_aic.rds")
-outlist_aic_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic.rds")
-outlist_aic_l100 <- readRDS("analyses/classif/library/outlist_l100_aic.rds")
+outlist_aic_l20 <- readRDS("analyses/classif/library/outlist_l20_1_aic_looTRUE.rds")
+outlist_aic_l25 <- readRDS("analyses/classif/library/outlist_l25_1_aic_looTRUE.rds")
+outlist_aic_l33 <- readRDS("analyses/classif/library/outlist_l33_1_aic_looTRUE.rds")
+outlist_aic_l50 <- readRDS("analyses/classif/library/outlist_l50_1_aic_looTRUE.rds")
+outlist_aic_l100 <- readRDS("analyses/classif/library/outlist_l100_aic_looTRUE.rds")
 
 # Make confusion matrices for each length:
 roc_aic_only <- combine_length(list(outlist_aic_l20,
