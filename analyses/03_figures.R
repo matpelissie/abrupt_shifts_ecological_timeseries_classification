@@ -359,7 +359,7 @@ no_abt <-
                                       apriori=TRUE, run_loo=FALSE,
                                       two_bkps = TRUE, smooth_signif = TRUE,
                                       outplot=TRUE, ind_plot=class)
-                  trajs$class_plot[[1]]
+                  trajs$class_plot$plots[[1]]
                 }
     )
 
