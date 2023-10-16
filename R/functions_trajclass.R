@@ -366,7 +366,7 @@ make_store_simu <- function(param_df, scen_fct, sr, se, su, jfr, jsz){
                                  brk1=brk1, brk2=brk2)
     }
 
-    sim <- run_simu(name=Fseq[[2]], r=r, F=Fseq[[1]], Ts=length(Fseq[[1]]),
+    sim <- run_simu(name=Fseq$name, r=r, F=Fseq$scen, Ts=length(Fseq$scen),
                     K=10, P=2, H=H, sr=sr, se=se, su=su, iter=iter,
                     thr=0, init=0.9, expected_class=expected_class,
                     jfr=jfr, jsz=jsz)
@@ -2058,7 +2058,7 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
 #' (best fit with asdetect detection curve).
 #' @param outplot Logical, last plot in return value.
 #' @param ind_plot Character to return the last plot for a given trajectory
-#' (either "nch", "lin", "pol", or "abt").
+#' (either "nch", "lin", "pol", "abt", or "best").
 #' @param detection_plot Logical to plot detection plot when abrupt.
 #' @param plot_one_in For simulations, to limit the number of plots saved,
 #' the number of timeseries out of which to save the plot (default 10).
@@ -2096,72 +2096,95 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
 
     # Keep timeseries with breakpoints:
     list_brk_ts <- best_traj %>%
-      dplyr::filter(traj=="1_breakpoint") %>%
+      dplyr::filter(traj=="abrupt") %>%
       dplyr::select(simu_id, loc_brk_chg)
 
     # If some timeseries have breakpoints:
     if (nrow(list_brk_ts) != 0){
 
-    # Split timeseries (keeping the breakpoint in each):
-    sets2 <- list()
-    for (i in 1:nrow(list_brk_ts)){
+      # Split timeseries (keeping the breakpoint in each):
+      sets2 <- list()
+      for (i in 1:nrow(list_brk_ts)){
 
-      sets2[[paste0(list_brk_ts$simu_id[i],"_1st")]] <-
-        sets$ts[[list_brk_ts$simu_id[i]]] %>%
-        dplyr::filter(X <= list_brk_ts$loc_brk_chg[i])
+        sets2[[paste0(list_brk_ts$simu_id[i],"_1st")]] <-
+          sets$ts[[list_brk_ts$simu_id[i]]] %>%
+          dplyr::filter(X <= list_brk_ts$loc_brk_chg[i])
 
-      sets2[[paste0(list_brk_ts$simu_id[i],"_2nd")]] <-
-        sets$ts[[list_brk_ts$simu_id[i]]] %>%
-        dplyr::filter(X >= list_brk_ts$loc_brk_chg[i])
-    }
+        sets2[[paste0(list_brk_ts$simu_id[i],"_2nd")]] <-
+          sets$ts[[list_brk_ts$simu_id[i]]] %>%
+          dplyr::filter(X >= list_brk_ts$loc_brk_chg[i])
+      }
 
-    # Remove too short sub timeseries:
-    sets2 <- sets2[lapply(sets2, nrow)>=15]
+      # Remove too short sub timeseries:
+      sets2 <- sets2[lapply(sets2, nrow)>=15]
 
-    # If any timeseries eligible:
-    if(length(sets2)>0){
+      # If any timeseries eligible:
+      if(length(sets2)>0){
 
-      # Fit models of splitted timeseries:
-      res2 <- fit_models(sets2, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
-                         mad_thr, mad_cst, apriori)
-      best_traj_split <- best_traj_aic(class_res=res2, type=type,
-                                       apriori=apriori, aic_selec=str,
-                                       smooth_signif=smooth_signif,
-                                       edge_lim=edge_lim, congr_brk=congr_brk)
+        # Fit models of splitted timeseries:
+        res2 <- fit_models(sets2, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
+                           mad_thr, mad_cst, apriori)
+        best_traj_split <- best_traj_aic(class_res=res2, type=type,
+                                         apriori=apriori, aic_selec=str,
+                                         smooth_signif=smooth_signif,
+                                         edge_lim=edge_lim, congr_brk=congr_brk)
 
-      # Locate auxiliary breakpoints:
-      list_brk_ts2 <- best_traj_split %>%
-        dplyr::mutate(part = factor(gsub("^.*_", "", simu_id),
-                                    levels=c("1st", "2nd")),
-                      simu_id = gsub("_1st|_2nd", "", simu_id)) %>%
-        dplyr::filter(traj == "1_breakpoint") %>%
-        dplyr::select(simu_id, loc_brk_chg, part) %>%
-        tidyr::spread(key = part, value = loc_brk_chg, drop=FALSE) %>%
-        dplyr::rename(loc_aux1_chg = "1st",
-                      loc_aux2_chg = "2nd")
+        # Locate auxiliary breakpoints:
+        list_brk_ts2 <- best_traj_split %>%
+          dplyr::mutate(part = factor(gsub("^.*_", "", simu_id),
+                                      levels=c("1st", "2nd")),
+                        simu_id = gsub("_1st|_2nd", "", simu_id)) %>%
+          dplyr::filter(traj == "abrupt") %>%
+          dplyr::select(simu_id, loc_brk_chg, part) %>%
+          # tidyr::pivot_wider(names_from = part, values_from = loc_brk_chg) %>%
+          tidyr::spread(key = part, value = loc_brk_chg, drop=FALSE) %>%
+          dplyr::rename(loc_aux1_chg = "1st",
+                        loc_aux2_chg = "2nd")
 
-      best_traj <- dplyr::left_join(best_traj, list_brk_ts2, by="simu_id") %>%
-        dplyr::mutate(nb_brk = dplyr::case_when(
-          class != "abrupt" ~ 0,
-          is.na(loc_aux1_chg) & is.na(loc_aux2_chg) ~ 1,
-          is.na(loc_aux1_chg) | is.na(loc_aux2_chg) ~ 2,
-          !(is.na(loc_aux1_chg) & is.na(loc_aux2_chg)) ~ 3
-        ))
+        best_traj <- dplyr::left_join(best_traj, list_brk_ts2, by="simu_id") %>%
+          dplyr::mutate(nb_brk = dplyr::case_when(
+            class != "abrupt" ~ 0,
+            is.na(loc_aux1_chg) & is.na(loc_aux2_chg) ~ 1,
+            is.na(loc_aux1_chg) | is.na(loc_aux2_chg) ~ 2,
+            !(is.na(loc_aux1_chg) & is.na(loc_aux2_chg)) ~ 3
+          ))
+
+        # Specify trajectory of splitted timeseries
+
+        best_traj <- best_traj %>%
+          dplyr::left_join(
+            best_traj_split %>%
+              dplyr::mutate(part = factor(gsub("^.*_", "", simu_id),
+                                          levels=c("1st", "2nd")),
+                            simu_id = gsub("_1st|_2nd", "", simu_id)) %>%
+              dplyr::select(simu_id, part, traj, trend, class) %>%
+              tidyr::pivot_wider(names_from = part, values_from = -c(simu_id, part)),
+            by="simu_id")
+
+
+        # tidyr::pivot_wider(names_from = part, values_from = loc_brk_chg) %>%
+
+      } else {
+
+        best_traj <- best_traj %>%
+          dplyr::mutate(loc_aux1_chg = NA,
+                        loc_aux2_chg = NA,
+                        nb_brk = ifelse(class == "abrupt", 1, 0),
+                        traj_1st = NA, traj_2nd = NA,
+                        trend_1st = NA, trend_2nd = NA,
+                        class_1st = NA, class_2nd = NA
+          )
+      }
+
     } else {
 
       best_traj <- best_traj %>%
         dplyr::mutate(loc_aux1_chg = NA,
                       loc_aux2_chg = NA,
-                      nb_brk = ifelse(class == "abrupt", 1, 0)
-        )
-    }
-
-    } else {
-
-      best_traj <- best_traj %>%
-        dplyr::mutate(loc_aux1_chg = NA,
-                      loc_aux2_chg = NA,
-                      nb_brk = ifelse(class == "abrupt", 1, 0)
+                      nb_brk = ifelse(class == "abrupt", 1, 0),
+                      traj_1st = NA, traj_2nd = NA,
+                      trend_1st = NA, trend_2nd = NA,
+                      class_1st = NA, class_2nd = NA
         )
     }
   }
@@ -2229,18 +2252,21 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
     ## Make plots:
     plots_traj_nch <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_nch,
                                           best_traj, plot_class="no_change",
-                                          best_traj_loo=best_traj_loo)
+                                          best_traj_loo=best_traj_loo,
+                                          ind_plot=ind_plot)
     plots_traj_lin <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_lin,
                                           best_traj, plot_class="linear",
-                                          best_traj_loo=best_traj_loo)
+                                          best_traj_loo=best_traj_loo,
+                                          ind_plot=ind_plot)
     plots_traj_pol <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_pol,
                                           best_traj, plot_class="quadratic",
-                                          best_traj_loo=best_traj_loo)
+                                          best_traj_loo=best_traj_loo,
+                                          ind_plot=ind_plot)
     plots_traj_chg <- plots_traj_abt <-
       plot_traj_multi_abt(sets, rslt=res$res_fit$res_abt, best_traj,
                           plot_class="abrupt", asd_thr,
                           best_traj_loo=best_traj_loo,
-                          detection_plot=detection_plot)
+                          detection_plot=detection_plot, ind_plot=ind_plot)
 
     if(!is.null(ind_plot)){
       if(ind_plot=="best"){
@@ -2287,7 +2313,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
 
           png(filename =
                 paste0(dirname,
-                       sets$ts[[i]]$expected_class[1],"/abr_",
+                       sets$ts[[i]]$expected_class[1],"abr_",
                        paste(head(stringr::str_split(
                          names(sets$ts)[i],"_")[[1]],-1), collapse="_"),"_",
                        noise_comb,"_", gsub("^.*_", "", names(sets$ts)[i]),
@@ -2315,7 +2341,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
 
         if(str=="aic_asd" & save_plot_bis){
 
-          png(filename = paste0(dirname,"/abr_",
+          png(filename = paste0(dirname,"abr_",
                                 sub("_iter01","",names(sets$ts)[i]), endname),
               width=6, height=6, units="in", res=300)
           print(plots_traj_abt$plot_bis[[i]])
@@ -2737,6 +2763,8 @@ run_classif_data <- function(df_list, min_len=20, str, asd_thr,
 #' @param asd_thr Numeric threshold for as_detect method.
 #' @param best_traj_loo Output from LOO process.
 #' @param detection_plot Logical to plot the detection plot.
+#' @param ind_plot Character to return the last plot for a given trajectory
+#' (either "nch", "lin", "pol", "abt", or "best").
 #'
 #' @return List of plots with best fit
 #'
@@ -2744,7 +2772,7 @@ run_classif_data <- function(df_list, min_len=20, str, asd_thr,
 
 plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                                 asd_thr=NULL, best_traj_loo=NULL,
-                                detection_plot=TRUE){
+                                detection_plot=TRUE, ind_plot=NULL){
 
   # Initiate plots:
   if (plot_class != "abrupt") plots <-
@@ -3027,8 +3055,75 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
     p <- p + theme(plot.background = element_rect(fill = bkg_col))
 
 
+    # Add radar plots:
+    if(!is.null(ind_plot)){
+
+      # Manage the size of the radar plots
+
+    #   # Weight/LOO radar plot:
+    #   wrad <- best_traj %>%
+    #     dplyr::select(simu_id | dplyr::contains("weight")) %>%
+    #     `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
+    #     dplyr::slice(i)
+    #
+    #   # AICc weight radar plot:
+    #   wrad_plot <-
+    #     ggradar::ggradar(wrad, axis.label.size = 1.5,
+    #                      grid.label.size = 0, group.point.size = 1,
+    #                      group.line.width = .2,
+    #                      group.colours = "red",
+    #                      background.circle.transparency=0, centre.y=0,
+    #                      gridline.mid.colour="grey20",
+    #                      gridline.min.colour="grey20",
+    #                      gridline.max.colour="grey20",
+    #                      axis.line.colour="grey20", grid.line.width=0.25)+
+    #     theme(
+    #       plot.background = element_blank(),
+    #       panel.background = element_blank(),
+    #       plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
+    #     labs(caption = "wAICc")
+    #
+    #   p <- cowplot::ggdraw(p)+
+    #     # cowplot::draw_plot(wrad_plot, x = 0.75, y = .86,
+    #     #                    width = .15, height = .15)
+    #     cowplot::draw_plot(wrad_plot, x = 0.75, y = .8,
+    #                               width = .3, height = .3)
+    #
+    #   # LOO radar plot:
+    #   if (!is.null(best_traj_loo)){
+    #
+    #     loorad <- best_traj %>%
+    #       dplyr::select(simu_id | dplyr::contains("loo")) %>%
+    #       `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
+    #       dplyr::slice(i)
+    #
+    #     loorad_plot <-
+    #       ggradar::ggradar(loorad, axis.label.size = 1.5,
+    #                        grid.label.size = 0, group.point.size = 1,
+    #                        group.line.width = .2,
+    #                        group.colours = "red",
+    #                        background.circle.transparency=0, centre.y=0,
+    #                        gridline.mid.colour="grey20",
+    #                        gridline.min.colour="grey20",
+    #                        gridline.max.colour="grey20",
+    #                        axis.line.colour="grey20", grid.line.width=0.25)+
+    #       theme(
+    #         plot.background = element_blank(),
+    #         panel.background = element_blank(),
+    #         plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
+    #       labs(caption = "LOO")
+    #
+    #     # Add to plot:
+    #     p <- cowplot::ggdraw(p) +
+    #       cowplot::draw_plot(loorad_plot, x = 0.85, y = .8,
+    #                          width = .3, height = .3)
+    #
+    # }
+
+
     # Add as_detect plot:
-    if (plot_class == "abrupt" & !is.null(rslt$abt_res$asd)){
+    if (detection_plot==TRUE &
+        plot_class == "abrupt" & !is.null(rslt$abt_res$asd)){
 
       p_bis <- cowplot::plot_grid(p,
                                p_asd +
@@ -3036,68 +3131,13 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                                          element_rect(fill = bkg_col)),
                                align = 'hv', ncol=1, rel_heights = c(3, 2))
 
-
-    # Weight/LOO radar plot:
-      wrad <- best_traj %>%
-        dplyr::select(simu_id | dplyr::contains("weight")) %>%
-        `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
-        dplyr::slice(i)
-
-      # AICc weight radar plot:
-      wrad_plot <-
-        ggradar::ggradar(wrad, axis.label.size = 1.5,
-                         grid.label.size = 0, group.point.size = 1,
-                         group.line.width = .2,
-                         group.colours = "red",
-                         background.circle.transparency=0, centre.y=0,
-                         gridline.mid.colour="grey20",
-                         gridline.min.colour="grey20",
-                         gridline.max.colour="grey20",
-                         axis.line.colour="grey20", grid.line.width=0.25)+
-        theme(
-          plot.background = element_blank(),
-          panel.background = element_blank(),
-          plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
-        labs(caption = "wAICc")
-
       # Add to secondary plot:
       p_bis <- cowplot::ggdraw() +
-        cowplot::draw_plot(p_bis, x = 0, y = 0, width = 1, height = 1) +
-        cowplot::draw_plot(wrad_plot, x = 0.75, y = .86,
-                           width = .15, height = .15)
-
-      # LOO radar plot:
-      if (!is.null(best_traj_loo)){
-
-        loorad <- best_traj %>%
-          dplyr::select(simu_id | dplyr::contains("loo")) %>%
-          `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
-          dplyr::slice(i)
-
-        loorad_plot <-
-          ggradar::ggradar(loorad, axis.label.size = 1.5,
-                           grid.label.size = 0, group.point.size = 1,
-                           group.line.width = .2,
-                           group.colours = "red",
-                           background.circle.transparency=0, centre.y=0,
-                           gridline.mid.colour="grey20",
-                           gridline.min.colour="grey20",
-                           gridline.max.colour="grey20",
-                           axis.line.colour="grey20", grid.line.width=0.25)+
-          theme(
-            plot.background = element_blank(),
-            panel.background = element_blank(),
-            plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
-          labs(caption = "LOO")
-
-        # Add to secondary plot:
-        p_bis <- p_bis +
-          cowplot::draw_plot(loorad_plot, x = 0.85, y = .86,
-                             width = .15, height = .15)
-      }
+        cowplot::draw_plot(p_bis, x = 0, y = 0, width = 1, height = 1)
 
       plot_bis[[i]] <- p_bis
 
+      }
     }
 
     plots[[i]] <- p
