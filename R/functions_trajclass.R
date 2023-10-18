@@ -1366,6 +1366,7 @@ res_trend <- function(sets,
 #' @return List of two objects:
 #' - one-row data frame with info about potentially detected breakpoints
 #' - vector of detection values from as_detect method
+#' - list of runs corresponding to local extrema in detection timeseries
 #'
 #' @references Boulton C. A. & Lenton T. M. (2019) 'A new method for detecting
 #' abrupt shifts in time series'.
@@ -1389,10 +1390,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
   if(class(where)[1]=="try-error"){
 
     where_low <- try(where_as_quiet(detect, thresh = 1, quiet=TRUE))
-
-    where <- list()
-    where$as_pos <- where_low$as_pos
-    where$dt_val <- where_low$dt_val
+    where <- where_low
 
   }
 
@@ -1408,6 +1406,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                         SDaft=NA,
                         nrmse=NA,
                         step_size=NA)
+  run <- NA
 
   if (length(where$as_pos)>0){
 
@@ -1434,6 +1433,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                                        c(where$as_pos[i], NA)[1] +
                                          start(stock_ts)[1] - 1)
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
+          run <- where$as_run
         }
 
       } else { # Without additional check
@@ -1445,15 +1445,17 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                                        c(where$as_pos[i], NA)[1] +
                                          start(stock_ts)[1] - 1)
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
+          run <- where$as_run
         }
-
       }
     }
   }
 
   asd_out["loc_brk"] <- sub("NA;", "", asd_out["loc_brk"])
 
-  return(list("df" = asd_out, "detect" = detect))
+  return(list("df" = asd_out,
+              "detect" = detect,
+              "run" = run))
 
 }
 
@@ -1751,7 +1753,7 @@ environment(as_detect_mad) <- asNamespace('asdetect')
 #' Determine where abrupt shift occurs
 #'
 #' @description Adapted from 'where_as' from the asdetect package to
-#' make it silent
+#' retrieve the extent of flat extrema and to make it silent
 #'
 #' @param ts Time series, most commonly a detection time series created
 #' from as_detect(). Any numerical vector will work.
@@ -1766,6 +1768,7 @@ environment(as_detect_mad) <- asNamespace('asdetect')
 #' as_pos	 The position(s) of the detected abrupt shifts. If dt is supplied,
 #' it will list the time rather than position.
 #' dt_val  The detection value at the position or time of detection.
+#' as_run The position(s) of extrema in detection timeseries (as uncertainty).
 #'
 #' If the maximum value of the (absolute) time series is less than the
 #' threshold searched for, the maximum detection value and corresponding
@@ -1790,27 +1793,32 @@ where_as_quiet <- function (ts, dt = NA, thresh = 0.7, quiet = FALSE){
     whichtip <- which(encoding$value == 1)
     # whichtip: position of runs in encoding
 
+    tip_run <- list()
+    # tip_run: list of run(s) with min or max detection score
     tip_pos <- rep(NA, numtip)
-    # tip_pos: list of position(s) with min or max detection score
+    # tip_pos: list of position(s) with min or max detection score (median of runs)
     tip_prob <- rep(NA, numtip)
     # tip_prob: list of detection score(s) of min or max
 
     for (k in 1:numtip) {
       if (k == 1) {
         if (ts[inds[1]] > 0) {
+
+          tip_run[k] <- list(
+            inds[which(ts[ inds[1:(encoding$length[1] + 1)] ] ==
+                         max( ts[ inds[1:(encoding$length[1] + 1)] ]))])
           # if the maximum is spread over several timepoint,
           # it returns the median position:
-          tip_pos[k] <-
-            floor(median(
-              inds[which(ts[ inds[1:(encoding$length[1] + 1)] ] ==
-                           max( ts[ inds[1:(encoding$length[1] + 1)] ]))]))
+          tip_pos[k] <- floor(median(tip_run[[k]]))
+
         }
         if (ts[inds[1]] < 0) {
 
-          tip_pos[k] <-
-            floor(median(
-              inds[which(ts[ inds[1:(encoding$length[1] + 1)] ] ==
-                           min( ts[ inds[1:(encoding$length[1] + 1)] ]))]))
+          tip_run[k] <- list(
+            inds[which(ts[ inds[1:(encoding$length[1] + 1)] ] ==
+                         min( ts[ inds[1:(encoding$length[1] + 1)] ]))])
+          tip_pos[k] <- floor(median(tip_run[[k]]))
+
         }
         tip_prob[k] <- ts[tip_pos[k]]
       } else {
@@ -1821,12 +1829,18 @@ where_as_quiet <- function (ts, dt = NA, thresh = 0.7, quiet = FALSE){
         # inds_temp: for run k, positions of the kth run
 
         if (ts[inds_temp[1]] > 0) {
-          tip_pos[k] <- floor(median(
-            inds_temp[which(ts[inds_temp] == max(ts[inds_temp]))]))
+
+          tip_run[k] <-
+            list(inds_temp[which(ts[inds_temp] == max(ts[inds_temp]))])
+          tip_pos[k] <- floor(median(tip_run[[k]]))
+
         }
         if (ts[inds_temp[1]] < 0) {
-          tip_pos[k] <- floor(median(
-            inds_temp[which(ts[inds_temp] == min(ts[inds_temp]))]))
+
+          tip_run[k] <-
+            list(inds_temp[which(ts[inds_temp] == min(ts[inds_temp]))])
+          tip_pos[k] <- floor(median(tip_run[[k]]))
+
         }
         tip_prob[k] <- ts[tip_pos[k]]
       }
@@ -1843,8 +1857,10 @@ where_as_quiet <- function (ts, dt = NA, thresh = 0.7, quiet = FALSE){
     results <- list()
     results$as_pos <- tip_pos
     results$dt_val <- tip_prob
+    results$as_run <- tip_run
     return(results)
   }
+
   # If no point above threshold, still return the maximum with a warning:
   if (length(inds) == 0) {
     results <- list()
@@ -1855,6 +1871,7 @@ where_as_quiet <- function (ts, dt = NA, thresh = 0.7, quiet = FALSE){
     if (-max(abs(ts)) == min(ts)) {
       results$dt_val <- min(ts)
     }
+    results$as_run <- which(ts == results$dt_val)
     if (!quiet) print("Threshold not detected, maximum returned instead")
 
     return(results)
@@ -2096,7 +2113,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
 
     # Keep timeseries with breakpoints:
     list_brk_ts <- best_traj %>%
-      dplyr::filter(traj=="abrupt") %>%
+      dplyr::filter(class=="abrupt") %>%
       dplyr::select(simu_id, loc_brk_chg)
 
     # If some timeseries have breakpoints:
@@ -2810,7 +2827,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
               rslt[i,]$inter+rslt[i,]$strd}, linetype = "dashed", color="blue")
       })
 
-    # Plot timeseries and model fit [abrupt]:
+      # Plot timeseries and model fit [abrupt]:
     } else {
 
       table_chg <- rslt$abt_res$chg %>% dplyr::slice(i) %>%
@@ -2824,48 +2841,83 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
           tibble::rownames_to_column(var="year") %>%
           dplyr::mutate(year=as.numeric(year)+sets$ts[[i]]$X[1]-1)
 
+        # Location of shift(s):
+        asd_loc <- rslt$abt_res$asd %>% dplyr::slice(i) %>%
+          dplyr::pull(loc_brk) %>% strsplit(";") %>% `[[`(1) %>%
+          as.numeric() %>% suppressWarnings()
+
+        # Uncertainty around shift(s):
+        asd_unc <- data.frame(xmn = rslt$shifts_res[[i]]$asd_run %>%
+                                lapply(first) %>% unlist(),
+                              xmx = rslt$shifts_res[[i]]$asd_run %>%
+                                lapply(last) %>% unlist(),
+                              ymn = rep(-Inf, length(asd_loc)),
+                              ymx = rep(Inf, length(asd_loc)))
+
+        # Add asdetect shift uncertainty:
+        if (!is.na(asd_loc[1])){
+          p_asd <- ggplot()+
+            geom_rect(aes(xmin = xmn, xmax = xmx,
+                          ymin = ymn, ymax = ymx),
+                      fill="pink", alpha=0.5,
+                      data=asd_unc)
+        } else {
+          p_asd <- ggplot()
+        }
+
         # Detection score plot:
-        p_asd <- asd_ts %>%
-          ggplot(aes(x=year, y=value))+
+        p_asd <-
+          p_asd+
           geom_hline(yintercept = c(-asd_thr, asd_thr),
                      col="red", linetype="dotted")+
-          geom_line()+
+          geom_line(data=asd_ts, aes(x=year, y=value), inherit.aes=FALSE)+
           theme_light(base_size = 7)+
           labs(y="Detection")+
           theme(plot.title = element_text(hjust = 0.5))+
           expand_limits(y=c(-1,1))+
           ggtitle("as_detect detection score")
 
-        # Location of shift(s):
-        asd_loc <- rslt$abt_res$asd %>% dplyr::slice(i) %>%
-          dplyr::pull(loc_brk) %>% strsplit(";") %>% `[[`(1) %>%
-          as.numeric() %>% suppressWarnings()
 
         # Add breakpoint on plot:
         if (!is.na(asd_loc[1])) p_asd <- p_asd +
           geom_vline(xintercept = asd_loc, col="red", linetype="dashed")
 
+
       } else {
         asd_loc <- NA
       }
 
-      # Plot timeseries with abrupt model fit:
-      p <- local({
-        i <- i
-        ggplot(sets$ts[[i]], aes(x = X, y = Y))+
-          geom_line()+
-          theme_light(base_size = 7)+
-          labs(x = "time unit (year)", y = ts_type)+
-          expand_limits(y=0)+
+      # Add asdetect shift uncertainty:
+      if (!is.na(asd_loc[1])){
 
-          geom_vline(xintercept = table_chg$loc_brk,
-                     col="blue", linetype="dashed")+
-          geom_line(data = rslt$shifts_res[[i]]$chg_outlist$pred_chg,
-                    aes(x=year, y=bp), col = "blue", alpha=0.7)+
-          scale_colour_manual(values = rep("red", table_chg$n_brk+1))+
-          theme(legend.position = "none") %>%
-          suppressWarnings()
-      })
+        p <- local({
+          i <- i
+          ggplot()+
+            geom_rect(aes(xmin = xmn, xmax = xmx,
+                          ymin = ymn, ymax = ymx),
+                      fill="pink", alpha=0.5,
+                      data=asd_unc)
+        })
+      } else {
+        p <- local({
+          i <- i
+          ggplot()
+        })
+      }
+
+      # Plot timeseries with abrupt model fit:
+      p <- p+
+        geom_line(data=sets$ts[[i]], aes(x = X, y = Y))+
+        theme_light(base_size = 7)+
+        labs(x = "time unit (year)", y = ts_type)+
+        expand_limits(y=0)+
+        geom_vline(xintercept = table_chg$loc_brk,
+                   col="blue", linetype="dashed")+
+        geom_line(data = rslt$shifts_res[[i]]$chg_outlist$pred_chg,
+                  aes(x=year, y=bp), col = "blue", alpha=0.7)+
+        scale_colour_manual(values = rep("red", table_chg$n_brk+1))+
+        theme(legend.position = "none") %>%
+        suppressWarnings()
 
       # Plot additional breaktimes [chg]:
       if ("loc_aux1_chg" %in% names(best_traj)) {
@@ -2879,7 +2931,6 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
 
       # Plot as_detect breaktimes [asd]:
       if (!is.na(asd_loc[1])){
-
         p <- p +
           geom_vline(xintercept = asd_loc, col="red", linetype="dashed")
       }
@@ -2917,21 +2968,21 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
     if(plot_class == "abrupt"){
       title_part <- paste0("<br>Breaktime(s): <span style='color:blue'>",
                            table_chg$loc_brk, "</span>",
-                          if(!is.null(best_traj$loc_aux1_chg)) {
-                            if(!(is.na(best_traj$loc_aux1_chg[i]) &
-                                 is.na(best_traj$loc_aux2_chg[i]))) {
-                              paste0(" (<span style='color:dodgerblue4'>",
-                                     best_traj$loc_aux1_chg[i],"</span>",
-                                     ", <span style='color:dodgerblue4'>",
-                                     best_traj$loc_aux2_chg[i],"</span>)")
-                              }
-                            },
-                            if(!is.na(asd_loc[1])) {
-                              paste0("; <span style='color:red'>",
-                                     paste(asd_loc,collapse=","),"</span>")},
-                          "  Step size = ",
-                          round(table_chg$step_size, digits=2))
-      }
+                           if(!is.null(best_traj$loc_aux1_chg)) {
+                             if(!(is.na(best_traj$loc_aux1_chg[i]) &
+                                  is.na(best_traj$loc_aux2_chg[i]))) {
+                               paste0(" (<span style='color:dodgerblue4'>",
+                                      best_traj$loc_aux1_chg[i],"</span>",
+                                      ", <span style='color:dodgerblue4'>",
+                                      best_traj$loc_aux2_chg[i],"</span>)")
+                             }
+                           },
+                           if(!is.na(asd_loc[1])) {
+                             paste0("; <span style='color:red'>",
+                                    paste(asd_loc,collapse=","),"</span>")},
+                           "  Step size = ",
+                           round(table_chg$step_size, digits=2))
+    }
 
     # Complement title if LOO performed:
     if (!is.null(best_traj_loo)){
@@ -2956,7 +3007,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                        dplyr::filter(class==plot_class), aes(x=X, y=Y),
                      col="orange", alpha=0.7)
 
-      # Add title and LOO points (for abrupt fit) [LOO]:
+        # Add title and LOO points (for abrupt fit) [LOO]:
       } else {
 
         # Add title:
@@ -2983,21 +3034,21 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                                max(sets$ts[[i]][[names(sets$ts[[i]])[2]]])/2),
                          fill="blue", alpha=.3, colour=NA, binwidth = 1)
 
-          if(!is.null(rslt$abt_res$asd)){ # histograms for asd breakpoints
-            p <- p +
-              geom_histogram(data=best_traj_loo[[i]] %>%
-                               dplyr::filter(class=="abrupt") %>%
-                               dplyr::mutate(loc_brk_asd =
-                                               strsplit(loc_brk_asd, ";")) %>%
-                               tidyr::unnest(loc_brk_asd) %>%
-                               dplyr::mutate(loc_brk_asd =
-                                               as.numeric(loc_brk_asd)),
-                             aes(x=loc_brk_asd,
-                                 y=after_stat(ncount)*
-                                   max(sets$ts[[i]][[names(sets$ts[[i]])[2]]]
-                                       )/2),
-                             fill="red", alpha=.3, colour=NA, binwidth = 1)
-          }
+        if(!is.null(rslt$abt_res$asd)){ # histograms for asd breakpoints
+          p <- p +
+            geom_histogram(data=best_traj_loo[[i]] %>%
+                             dplyr::filter(class=="abrupt") %>%
+                             dplyr::mutate(loc_brk_asd =
+                                             strsplit(loc_brk_asd, ";")) %>%
+                             tidyr::unnest(loc_brk_asd) %>%
+                             dplyr::mutate(loc_brk_asd =
+                                             as.numeric(loc_brk_asd)),
+                           aes(x=loc_brk_asd,
+                               y=after_stat(ncount)*
+                                 max(sets$ts[[i]][[names(sets$ts[[i]])[2]]]
+                                 )/2),
+                           fill="red", alpha=.3, colour=NA, binwidth = 1)
+        }
 
         # Add LOO points:
         p <- p +
@@ -3009,7 +3060,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
       }
 
 
-    # Complement title if no LOO performed:
+      # Complement title if no LOO performed:
     } else {
 
       # Add title (for smooth fit):
@@ -3026,18 +3077,18 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
           theme(plot.title = ggtext::element_markdown(size=10,
                                                       lineheight = 1.1))
 
-      # Add title (for abrupt fit):
+        # Add title (for abrupt fit):
       } else {
 
         p <- p +
           ggtitle(paste0("<b>Abrupt ", rslt$abt_res$chg[i,]$trend,"</b>",
-                        "<br>AICc = ", round(table_chg$aic, digits=2),
-                        "  wAICc = ", best_traj[[paste0("weight_aic_",
-                                                        plot_class)]][i],
-                        "  NRMSE = ", round(best_traj[[paste0("nrmse_",
-                                                              plot_class)]][i],
-                                            digits=2),
-                        title_part)) +
+                         "<br>AICc = ", round(table_chg$aic, digits=2),
+                         "  wAICc = ", best_traj[[paste0("weight_aic_",
+                                                         plot_class)]][i],
+                         "  NRMSE = ", round(best_traj[[paste0("nrmse_",
+                                                               plot_class)]][i],
+                                             digits=2),
+                         title_part)) +
           theme(plot.title = ggtext::element_markdown(size=10,
                                                       lineheight = 1.1))
 
@@ -3060,82 +3111,82 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
 
       # Manage the size of the radar plots
 
-    #   # Weight/LOO radar plot:
-    #   wrad <- best_traj %>%
-    #     dplyr::select(simu_id | dplyr::contains("weight")) %>%
-    #     `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
-    #     dplyr::slice(i)
-    #
-    #   # AICc weight radar plot:
-    #   wrad_plot <-
-    #     ggradar::ggradar(wrad, axis.label.size = 1.5,
-    #                      grid.label.size = 0, group.point.size = 1,
-    #                      group.line.width = .2,
-    #                      group.colours = "red",
-    #                      background.circle.transparency=0, centre.y=0,
-    #                      gridline.mid.colour="grey20",
-    #                      gridline.min.colour="grey20",
-    #                      gridline.max.colour="grey20",
-    #                      axis.line.colour="grey20", grid.line.width=0.25)+
-    #     theme(
-    #       plot.background = element_blank(),
-    #       panel.background = element_blank(),
-    #       plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
-    #     labs(caption = "wAICc")
-    #
-    #   p <- cowplot::ggdraw(p)+
-    #     # cowplot::draw_plot(wrad_plot, x = 0.75, y = .86,
-    #     #                    width = .15, height = .15)
-    #     cowplot::draw_plot(wrad_plot, x = 0.75, y = .8,
-    #                               width = .3, height = .3)
-    #
-    #   # LOO radar plot:
-    #   if (!is.null(best_traj_loo)){
-    #
-    #     loorad <- best_traj %>%
-    #       dplyr::select(simu_id | dplyr::contains("loo")) %>%
-    #       `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
-    #       dplyr::slice(i)
-    #
-    #     loorad_plot <-
-    #       ggradar::ggradar(loorad, axis.label.size = 1.5,
-    #                        grid.label.size = 0, group.point.size = 1,
-    #                        group.line.width = .2,
-    #                        group.colours = "red",
-    #                        background.circle.transparency=0, centre.y=0,
-    #                        gridline.mid.colour="grey20",
-    #                        gridline.min.colour="grey20",
-    #                        gridline.max.colour="grey20",
-    #                        axis.line.colour="grey20", grid.line.width=0.25)+
-    #       theme(
-    #         plot.background = element_blank(),
-    #         panel.background = element_blank(),
-    #         plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
-    #       labs(caption = "LOO")
-    #
-    #     # Add to plot:
-    #     p <- cowplot::ggdraw(p) +
-    #       cowplot::draw_plot(loorad_plot, x = 0.85, y = .8,
-    #                          width = .3, height = .3)
-    #
-    # }
+      #   # Weight/LOO radar plot:
+      #   wrad <- best_traj %>%
+      #     dplyr::select(simu_id | dplyr::contains("weight")) %>%
+      #     `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
+      #     dplyr::slice(i)
+      #
+      #   # AICc weight radar plot:
+      #   wrad_plot <-
+      #     ggradar::ggradar(wrad, axis.label.size = 1.5,
+      #                      grid.label.size = 0, group.point.size = 1,
+      #                      group.line.width = .2,
+      #                      group.colours = "red",
+      #                      background.circle.transparency=0, centre.y=0,
+      #                      gridline.mid.colour="grey20",
+      #                      gridline.min.colour="grey20",
+      #                      gridline.max.colour="grey20",
+      #                      axis.line.colour="grey20", grid.line.width=0.25)+
+      #     theme(
+      #       plot.background = element_blank(),
+      #       panel.background = element_blank(),
+      #       plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
+      #     labs(caption = "wAICc")
+      #
+      #   p <- cowplot::ggdraw(p)+
+      #     # cowplot::draw_plot(wrad_plot, x = 0.75, y = .86,
+      #     #                    width = .15, height = .15)
+      #     cowplot::draw_plot(wrad_plot, x = 0.75, y = .8,
+      #                               width = .3, height = .3)
+      #
+      #   # LOO radar plot:
+      #   if (!is.null(best_traj_loo)){
+      #
+      #     loorad <- best_traj %>%
+      #       dplyr::select(simu_id | dplyr::contains("loo")) %>%
+      #       `colnames<-`(c("simu_id","nch","lin","qdr","abt")) %>%
+      #       dplyr::slice(i)
+      #
+      #     loorad_plot <-
+      #       ggradar::ggradar(loorad, axis.label.size = 1.5,
+      #                        grid.label.size = 0, group.point.size = 1,
+      #                        group.line.width = .2,
+      #                        group.colours = "red",
+      #                        background.circle.transparency=0, centre.y=0,
+      #                        gridline.mid.colour="grey20",
+      #                        gridline.min.colour="grey20",
+      #                        gridline.max.colour="grey20",
+      #                        axis.line.colour="grey20", grid.line.width=0.25)+
+      #       theme(
+      #         plot.background = element_blank(),
+      #         panel.background = element_blank(),
+      #         plot.caption = element_text(hjust = 0.5, vjust = 0, size = 6))+
+      #       labs(caption = "LOO")
+      #
+      #     # Add to plot:
+      #     p <- cowplot::ggdraw(p) +
+      #       cowplot::draw_plot(loorad_plot, x = 0.85, y = .8,
+      #                          width = .3, height = .3)
+      #
+      # }
 
 
-    # Add as_detect plot:
-    if (detection_plot==TRUE &
-        plot_class == "abrupt" & !is.null(rslt$abt_res$asd)){
+      # Add as_detect plot:
+      if (detection_plot==TRUE &
+          plot_class == "abrupt" & !is.null(rslt$abt_res$asd)){
 
-      p_bis <- cowplot::plot_grid(p,
-                               p_asd +
-                                 theme(plot.background =
-                                         element_rect(fill = bkg_col)),
-                               align = 'hv', ncol=1, rel_heights = c(3, 2))
+        p_bis <- cowplot::plot_grid(p,
+                                    p_asd +
+                                      theme(plot.background =
+                                              element_rect(fill = bkg_col)),
+                                    align = 'hv', ncol=1, rel_heights = c(3, 2))
 
-      # Add to secondary plot:
-      p_bis <- cowplot::ggdraw() +
-        cowplot::draw_plot(p_bis, x = 0, y = 0, width = 1, height = 1)
+        # Add to secondary plot:
+        p_bis <- cowplot::ggdraw() +
+          cowplot::draw_plot(p_bis, x = 0, y = 0, width = 1, height = 1)
 
-      plot_bis[[i]] <- p_bis
+        plot_bis[[i]] <- p_bis
 
       }
     }
