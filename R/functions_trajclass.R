@@ -2812,6 +2812,10 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
     else if (sets$ts_type %in% c("R")) ts_type <- "Recruitment"
     else ts_type <- sets$ts_type
 
+    # Define x-axis name:
+    if (sets$time_type %in% c("year", "Year")) time_type <- "Time unit (year)"
+    else time_type <- sets$time_type
+
     # Plot timeseries and model fit [smooth]:
     if (plot_class != "abrupt"){
 
@@ -2820,7 +2824,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
         ggplot(sets$ts[[i]], aes(x = X, y = Y))+
           geom_line()+
           theme_light(base_size = 7)+
-          labs(x = "time unit (year)", y = ts_type)+
+          labs(x = time_type, y = ts_type)+
           expand_limits(y=0)+
           stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+
               rslt[i,]$inter}, color="blue")+
@@ -2912,7 +2916,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
       p <- p+
         geom_line(data=sets$ts[[i]], aes(x = X, y = Y))+
         theme_light(base_size = 7)+
-        labs(x = "time unit (year)", y = ts_type)+
+        labs(x = time_type, y = ts_type)+
         expand_limits(y=0)+
         geom_vline(xintercept = table_chg$loc_brk,
                    col="blue", linetype="dashed")+

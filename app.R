@@ -21,6 +21,7 @@ color_gradient_bounded <- function(dt, column_name,
 prep_data_any <- function(df){
 
   # For any empirical data (with 2 columns)
+  time_time <- names(df)[1]
   ts_type <- names(df)[2]
   X <- df[,1, drop=TRUE]
   Y <- df[,2, drop=TRUE]
@@ -32,7 +33,7 @@ prep_data_any <- function(df){
 
   sets <- list("ts" = data.frame(X=X, Y=Y))
 
-  return(list("ts"=sets, "ts_type"=ts_type))
+  return(list("ts"=sets, "ts_type"=ts_type, "time_type"=time_time))
 }
 
 
@@ -90,7 +91,8 @@ ui <- shiny::fluidPage(
       DT::dataTableOutput("tbl")
 
       # To add as input
-      # Expandable panel with asd_thr, asd or not,
+      # Expandable panel with asd_thr, asd or not, edge_lim, congruence_lim,
+      # mad_thr
 
       # To add as output
       # When breakpoint: shape before/after
