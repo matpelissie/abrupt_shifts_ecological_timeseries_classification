@@ -33,7 +33,7 @@ titles <- c("No change","Linear decrease","Linear increase",
             "Concave","Decelerated decrease","Decelerated increase",
             "Abrupt decrease","Abrupt increase","Abrupt decrease")
 gl <- list()
-set.seed(1)
+set.seed(7)
 
 # Import noise values:
 nz <- sapply(colnames(noise_df),
@@ -210,7 +210,7 @@ df_bird <- readr::read_csv(
   "data/02_PECBMS/europe-indicesandtrends-till2021_mod.csv")
 
 # Select and reshape the data:
-# Ortolan bunting (Emberiza hortulana) in Europe:
+# Northern wheatear (Oenanthe oenanthe) in Europe:
 species <- unique(df_bird$PECBMS_species_name) %>% sort()
 
 df_list_bird <- df_bird %>%
@@ -218,32 +218,33 @@ df_list_bird <- df_bird %>%
   dplyr::group_split() %>%
   stats::setNames(species)
 
-df_list_hort <- df_list_bird["Emberiza_hortulana"]
+# df_list_hort <- df_list_bird["Emberiza_hortulana"]
+df_list_hort <- df_list_bird["Oenanthe_oenanthe"]
 
 # Run the classification:
 output_bird <- run_classif_data(df_list=df_list_hort, min_len=20, asd_thr=0.15,
                                 str="aic_asd", showplots=TRUE, save_plot=FALSE,
                                 run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                 group="PECBMS_species_name", time="Year",
-                                variable="Index", outplot=TRUE, ind_plot="abt",
+                                variable="Index", outplot=TRUE, ind_plot="best",
                                 dirname="analyses/")
 
 # Plot the best trajectory shape:
-p_bird <- output_bird$outlist$Emberiza_hortulana$class_plot$plots[[1]] +
+p_bird <- output_bird$outlist$Oenanthe_oenanthe$class_plot$plots[[1]] +
   theme(plot.background = element_rect(fill = "white"))
 
 
 # Load Odonate index from Termaat et al. 2019:
 df_odo <- readr::read_csv("data/03_Termaat2019/ddi12913-sup-0003-datas1.csv")%>%
   tidyr::pivot_longer(cols = (!region & !species & !nplot &
-                         !trend & !trend_se & !trend_category),
-               names_to = "year",
-               values_to = "index") %>%
+                                !trend & !trend_se & !trend_category),
+                      names_to = "year",
+                      values_to = "index") %>%
   dplyr::mutate(year = as.numeric(year)) %>%
   tidyr::drop_na()
 
-# Select and reshape the data
-# Small red-eyed damselfly (Erythromma viridulum) in Britain:
+# Select and reshape the data:
+# Red-eyed damselfly (Erythromma najas) in Britain
 df_odo_brit <- df_odo %>%
   dplyr::filter(region %in% c("Britain"))
 
@@ -254,18 +255,18 @@ df_list_odo <- df_odo_brit %>%
   dplyr::group_split() %>%
   stats::setNames(species)
 
-df_list_erth <- df_list_odo["Erythromma viridulum"]
+df_list_plty <- df_list_odo["Erythromma najas"]
 
 # Run the classification:
-output_odo <- run_classif_data(df_list=df_list_erth, min_len=20, asd_thr=0.15,
-                               str="aic_asd", showplots=TRUE, save_plot=FALSE,
+output_odo <- run_classif_data(df_list=df_list_plty, min_len=20, asd_thr=0.15,
+                               str="aic_asd", showplots=TRUE,
                                run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                group="species", time="year", variable="index",
-                               outplot=TRUE, ind_plot="abt",
-                               dirname="analyses/")
+                               outplot=TRUE, ind_plot="best",
+                               save_plot = FALSE, dirname = "analyses/")
 
-# Plot the best trajectory shape:
-p_odo <- output_odo$outlist$`Erythromma viridulum`$class_plot$plots[[1]] +
+# Plot the trajectory shapes:
+p_odo <- output_odo$outlist$`Erythromma najas`$class_plot$plots[[1]]+
   theme(plot.background = element_rect(fill = "white"))
 
 # Combine plots and save the figure:
@@ -514,8 +515,6 @@ roc_aic_only_conf_mat <- roc_aic_only %>%
 
 # Load classification output for AICc + asdetect:
 
-lib_dir <- "analyses/classif/library/"
-
 outlist_aicasd_l20 <- readRDS(
   "analyses/classif/library/outlist_l20_1_aic_asd_thr0.15_looTRUE.rds")
 outlist_aicasd_l25 <- readRDS(
@@ -593,8 +592,8 @@ cowplot::plot_grid(roc_aic_only_conf_mat$l20$gtable,
 dev.off()
 
 
-# Remove failing limit cases (thr=0 and thr=0.05 for lengths 100 and 50):
-roc_thr <- roc_thr[-c(1,6,5,10),]
+# Remove failing limit cases (thr=0 for lengths 100 and thr=0.05 for length 50):
+roc_thr <- roc_thr[-c(1,5,10),]
 
 # Plot and save complete ROC curve:
 p_roc_thr <- roc_thr %>%
@@ -664,7 +663,7 @@ loo_wAICc_nmrse_obs_long <- loo_wAICc_nmrse_obs %>%
   tidyr::pivot_longer(cols = c("wAICc", "LOO", "NRMSE"),
                       names_to = "metric", values_to = "value") %>%
   dplyr::mutate(metric = factor(metric, levels=c("wAICc", "LOO", "NRMSE")))
-
+#
 # Compute deciles:
 deciles <- loo_wAICc_nmrse_obs_long %>%
   dplyr::filter(class_tested==class) %>%
@@ -912,7 +911,7 @@ subsets <- list("ts"=c(sets$ts[1], sets$ts[26], sets$ts[51], sets$ts[76],
 
 # Run the classification:
 trajs <- traj_class(subsets, str="aic_asd", abr_mtd=c("chg", "asd"),
-                    noise_comb=noise_comb, asd_chk=FALSE, asd_thr=0.15,
+                    noise_comb=noise_comb, asd_chk=TRUE, asd_thr=0.15,
                     type="sim", showplots=TRUE, apriori=TRUE, run_loo=TRUE,
                     two_bkps = TRUE, smooth_signif = TRUE, edge_lim=5,
                     congr_brk=5, outplot=TRUE, save_plot=TRUE, plot_one_in=1,
@@ -941,25 +940,54 @@ set <- extract_RAM(stk, ts_type) %>%
   prep_data(thr=thr, type="RAM", apriori=FALSE)
 
 # Run the classification:
-output_RAM <- traj_class(sets=set, str=str, abr_mtd=c("chg", "asd"),
-                         asd_thr=0.15, asd_chk=FALSE, type="RAM",
+output_RAM1 <- traj_class(sets=set, str=str, abr_mtd=c("chg", "asd"),
+                         asd_thr=0.15, asd_chk=TRUE, type="RAM",
                          showplots=TRUE, apriori=FALSE, run_loo=TRUE,
-                         mad_cst=1, save_plot = FALSE, two_bkps=TRUE,
-                         smooth_signif=TRUE, outplot=TRUE,ind_plot=NULL,
+                         mad_thr=1.5, save_plot = FALSE, two_bkps=TRUE,
+                         smooth_signif=TRUE, outplot=TRUE, ind_plot=NULL,
                          dirname="analyses/")
 
 # Plot the trajectory shapes:
-p_RAM <- output_RAM$class_plot+
+p_RAM1 <- output_RAM1$class_plot+
   theme_update(plot.title = element_text(hjust = 0.5))+
   ggtitle("Atlantic cod (Gadus morhua) catch in Southern Grand Banks (Canada)")
 
 
-# Load Bird PECBMS index
+# Select and reshape the data:
+# PLAICVIIbc - Atlantic cod (Gadus morhua) - Southern Grand Banks:
+ts_type <- "TCbest"
+thr <- 0
+stk <- "APOLLNSJ"
+str <- "aic_asd"
+
+# Run the classification:
+set <- extract_RAM(stk, ts_type) %>%
+  prep_data(thr=thr, type="RAM", apriori=FALSE)
+
+# Run the classification:
+output_RAM2 <- traj_class(sets=set, str=str, abr_mtd=c("chg", "asd"),
+                         asd_thr=0.15, asd_chk=TRUE, type="RAM",
+                         showplots=TRUE, apriori=FALSE, run_loo=TRUE,
+                         save_plot = FALSE, two_bkps=TRUE,
+                         smooth_signif=TRUE, outplot=TRUE, ind_plot=NULL,
+                         dirname="analyses/")
+
+# Plot the trajectory shapes:
+p_RAM2 <- output_RAM2$class_plot+
+  theme_update(plot.title = element_text(hjust = 0.5))+
+  ggtitle("Walleye pollock (Gadus chalcogrammus) catch in northern Sea of Japan")
+
+
+
+
+
+# Load Bird PECBMS index:
 df_bird <- readr::read_csv(
   "data/02_PECBMS/europe-indicesandtrends-till2021_mod.csv")
 
+
 # Select and reshape the data:
-# European greenfinch (Chloris chloris) in Europe:
+# Ortolan bunting (Emberiza hortulana) in Europe:
 species <- unique(df_bird$PECBMS_species_name) %>% sort()
 
 df_list_bird <- df_bird %>%
@@ -967,10 +995,26 @@ df_list_bird <- df_bird %>%
   dplyr::group_split() %>%
   stats::setNames(species)
 
+df_list_hort <- df_list_bird["Emberiza_hortulana"]
+
+# Run the classification:
+output_bird1 <- run_classif_data(df_list=df_list_hort, min_len=20, asd_thr=0.15,
+                                str="aic_asd", showplots=TRUE, save_plot=FALSE,
+                                run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
+                                group="PECBMS_species_name", time="Year",
+                                variable="Index", outplot=TRUE, ind_plot=NULL,
+                                dirname="analyses/")
+
+# Plot the best trajectory shape:
+p_bird1 <- output_bird1$outlist$Emberiza_hortulana$class_plot +
+  theme_update(plot.title = element_text(hjust = 0.5))+
+  ggtitle("Ortolan bunting (Emberiza hortulana) in Europe")
+
+
 df_list_grf <- df_list_bird["Chloris_chloris"]
 
 # Run the classification:
-output_bird <- run_classif_data(df_list=df_list_grf, min_len=20, asd_thr=0.15,
+output_bird2 <- run_classif_data(df_list=df_list_grf, min_len=20, asd_thr=0.15,
                                 str="aic_asd", showplots=TRUE,
                                 run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                 group="PECBMS_species_name", time="Year",
@@ -978,22 +1022,24 @@ output_bird <- run_classif_data(df_list=df_list_grf, min_len=20, asd_thr=0.15,
                                 save_plot = FALSE, dirname = "analyses/")
 
 # Plot the trajectory shapes:
-p_bird <- output_bird$outlist$Chloris_chloris$class_plot+
+p_bird2 <- output_bird2$outlist$Chloris_chloris$class_plot+
   theme_update(plot.title = element_text(hjust = 0.5))+
   ggtitle("European greenfinch (Chloris chloris) in Europe")
+
+
 
 
 # Load Odonate index from Termaat et al. 2019:
 df_odo <- readr::read_csv("data/03_Termaat2019/ddi12913-sup-0003-datas1.csv")%>%
   tidyr::pivot_longer(cols = (!region & !species & !nplot &
-                         !trend & !trend_se & !trend_category),
-               names_to = "year",
-               values_to = "index") %>%
+                                !trend & !trend_se & !trend_category),
+                      names_to = "year",
+                      values_to = "index") %>%
   dplyr::mutate(year = as.numeric(year)) %>%
   tidyr::drop_na()
 
-# Select and reshape the data:
-# White-megged damselfly (Platycnemis pennipes) in Britain
+# Select and reshape the data
+# Small red-eyed damselfly (Erythromma viridulum) in Britain:
 df_odo_brit <- df_odo %>%
   dplyr::filter(region %in% c("Britain"))
 
@@ -1004,27 +1050,46 @@ df_list_odo <- df_odo_brit %>%
   dplyr::group_split() %>%
   stats::setNames(species)
 
-df_list_plty <- df_list_odo["Platycnemis pennipes"]
+df_list_erth <- df_list_odo["Erythromma viridulum"]
 
 # Run the classification:
-output_odo <- run_classif_data(df_list=df_list_plty, min_len=20, asd_thr=0.15,
-                               str="aic_asd", showplots=TRUE,
+output_odo1 <- run_classif_data(df_list=df_list_erth, min_len=20, asd_thr=0.15,
+                               str="aic_asd", showplots=TRUE, save_plot=FALSE,
                                run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                group="species", time="year", variable="index",
                                outplot=TRUE, ind_plot=NULL,
-                               save_plot = FALSE, dirname = "analyses/")
+                               dirname="analyses/")
 
-# Plot the trajectory shapes:
-p_odo <- output_odo$outlist$`Platycnemis pennipes`$class_plot+
+# Plot the best trajectory shape:
+p_odo1 <- output_odo1$outlist$`Erythromma viridulum`$class_plot +
+  theme_update(plot.title = element_text(hjust = 0.5))+
+  ggtitle("Small red-eyed damselfly (Erythromma viridulum) in Britain")
+
+
+df_list_plat <- df_list_odo["Platycnemis pennipes"]
+
+# Run the classification:
+output_odo2 <- run_classif_data(df_list=df_list_plat, min_len=20, asd_thr=0.15,
+                               str="aic_asd", showplots=TRUE, save_plot=FALSE,
+                               run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
+                               group="species", time="year", variable="index",
+                               outplot=TRUE, ind_plot=NULL,
+                               dirname="analyses/")
+
+# Plot the best trajectory shape:
+p_odo2 <- output_odo2$outlist$`Platycnemis pennipes`$class_plot +
   theme_update(plot.title = element_text(hjust = 0.5))+
   ggtitle("White-megged damselfly (Platycnemis pennipes) in Britain")
 
 
 # Combine plots and save the figure:
-fig_s8 <- cowplot::plot_grid(p_RAM, p_bird, p_odo, nrow=3, ncol=1,
-                             labels=c("A","B","C"), label_size=15, label_x=-0.0)
+fig_s8 <- cowplot::plot_grid(p_RAM1, p_RAM2,
+                             p_bird1, p_bird2,
+                             p_odo1, p_odo2, nrow=3, ncol=2,
+                             labels=c(LETTERS[1:6]), label_size=15,
+                             label_x=-0.0)
 cowplot::save_plot(filename = "analyses/figs/supp_mat/fig_s8.pdf",
-                   plot=fig_s8, base_height = 20, base_width = 10)
+                   plot=fig_s8, base_height = 20, base_width = 20)
 
 ## Then completed on Inkscape with silhouettes
 
