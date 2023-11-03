@@ -742,7 +742,7 @@ prep_data <- function(df, thr=0, type="sim", apriori){
         dplyr::rename(Y=TB)
 
       iter <- seq_len(max(df$iter))
-      scen_list <- df %>% dplyr::distinct(scen) %>% pull()
+      scen_list <- df %>% dplyr::distinct(scen) %>% dplyr::pull()
     }
 
   } else if (type=="RAM" | type=="data"){ # For empirical data
@@ -750,10 +750,10 @@ prep_data <- function(df, thr=0, type="sim", apriori){
     ts_type <- names(df)[3]
     iter <- 1
     dataset <- df %>%
-      dplyr::rename(Y=ts_type) %>%
+      dplyr::rename(Y=dplyr::all_of(ts_type)) %>%
       dplyr::mutate(iter = 1)
 
-    scen_list <- df %>% dplyr::distinct(scen) %>% pull()
+    scen_list <- df %>% dplyr::distinct(scen) %>% dplyr::pull()
 
   }
 
@@ -1255,7 +1255,7 @@ res_trend <- function(sets,
     if(nrow(sets[[i]])>3){ # Errors occur if timeseries length is below 4
 
       simulated <- mc_trend(sets[[i]], niter, ref_year=NULL,
-                            correction=FALSE, fit) %>%
+                            correction=correction, fit) %>%
         dplyr::mutate(best_model=as.factor(best_model))
 
       # Retrieve best shape and model (only one iteration):
@@ -1433,7 +1433,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                                        c(where$as_pos[i], NA)[1] +
                                          start(stock_ts)[1] - 1)
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
-          run <- where$as_run
+          run <- lapply(where$as_run, function(x) x + start(stock_ts)[1] - 1)
         }
 
       } else { # Without additional check
@@ -1445,7 +1445,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                                        c(where$as_pos[i], NA)[1] +
                                          start(stock_ts)[1] - 1)
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
-          run <- where$as_run
+          run <- lapply(where$as_run, function(x) x + start(stock_ts)[1] - 1)
         }
       }
     }
@@ -1532,10 +1532,11 @@ chg_fct <- function(ts){
 #' @param mad_cst (asdetect) Correction factor for asymptotic
 #' normal consistency.
 #'
-#' @return List of three objects (if both chg and asd methods used):
-#' - data frame with info about potentailly detected breakpoints
+#' @return List of four objects (if both chg and asd methods used):
+#' - data frame with info about potentially detected breakpoints
 #' - list of chg method output with model fitted values
 #' - vector of detection values from asd method
+#' - list of runs of uncertainty for asdetect breakpoints
 #'
 #' @export
 
@@ -1568,7 +1569,7 @@ shifts <- function(ts, abr_mtd, asd_thr, asd_chk,
   # Return the output depending on the methods used:
   if ("asd" %in% abr_mtd & "chg" %in% abr_mtd) {
     return(list("res_table" = res_table, "chg_outlist" = chg_outlist,
-                "asd_detect" = asd_out$detect))
+                "asd_detect" = asd_out$detect, "asd_run" = asd_out$run))
 
   } else if ("chg" %in% abr_mtd) {
     return(list("res_table" = res_table, "chg_outlist" = chg_outlist))
@@ -2001,7 +2002,7 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
                                 contains("trend")|contains("nrmse")) %>%
       dplyr::rename_with(~str_c(., "_nch")),
     res_lin %>% dplyr::select(contains("max_shape")|contains("aic")|
-                                contains("trend")|contains("nrmse")) %>%
+                                contains("trend")|contains("nrmse")|slope) %>%
       dplyr::rename_with(~str_c(., "_lin")),
     res_pol %>% dplyr::select(contains("max_shape")|contains("aic")|
                                 contains("best_model")|contains("trend")|
@@ -2016,7 +2017,8 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
             ),
     res_abt$abt_res[["chg"]] %>% dplyr::select(mag, SDbef, SDaft, step_size),
     lengths
-  ) %>% dplyr::rename(signif_model = best_model_pol)
+  ) %>% dplyr::rename(signif_model = best_model_pol,
+                      slope = slope_lin)
 
   # Add expectations if known:
   if(type=="sim" & apriori){
@@ -2563,7 +2565,7 @@ best_traj_aic <- function(class_res, type, apriori, aic_selec,
 
     dplyr::select(simu_id|contains("max_shape")|contains("expected")|
                     best_aic|signif_model|contains("loc")|contains("weight")|
-                    mag|contains("SD")|contains("nrmse")|step_size|
+                    mag|contains("SD")|contains("nrmse")|slope|step_size|
                     contains("not_abr")) %>%
 
     tidyr::pivot_longer(contains("max_shape"),
@@ -2739,7 +2741,7 @@ run_classif_data <- function(df_list, min_len=20, str, asd_thr,
     if(str == "aic_asd") abr_mtd <- c("chg", "asd")
 
     trajs <- traj_class(sets=set, str=str, abr_mtd=abr_mtd, asd_thr=asd_thr,
-                        asd_chk=FALSE, type="data", showplots=showplots,
+                        asd_chk=TRUE, type="data", showplots=showplots,
                         apriori=FALSE, run_loo=run_loo, two_bkps=two_bkps,
                         smooth_signif=smooth_signif, outplot=outplot,
                         ind_plot=ind_plot, lowwl=5, highwl="default",
@@ -2747,8 +2749,8 @@ run_classif_data <- function(df_list, min_len=20, str, asd_thr,
                         save_plot=save_plot)
 
     # Add linear slope, breakpoints location, magnitude:
-    trajs$best_traj <- trajs$best_traj %>%
-      dplyr::mutate(slope = trajs$res_detail$res_lin$slope)
+    # trajs$best_traj <- trajs$best_traj %>%
+    #   dplyr::mutate(slope = trajs$res_detail$res_lin$slope)
 
     traj_ts <- traj_ts %>% dplyr::bind_rows(trajs$best_traj)
     outlist[[names(df_list)[i]]] <- trajs
@@ -2804,10 +2806,11 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
     if (sets$ts_type %in% c("TB", "TBbest")) ts_type <- "Biomass"
     # if (sets$ts_type %in% c("TB", "TBbest")) ts_type <-
     #     "State variable (Biomass)"
-    if (sets$ts_type %in% c("TC", "TCbest")) ts_type <- "Catch"
-    if (sets$ts_type %in% c("SProd")) ts_type <- "Surplus production"
-    if (sets$ts_type %in% c("Index", "index")) ts_type <- "Index"
-    if (sets$ts_type %in% c("R")) ts_type <- "Recruitment"
+    else if (sets$ts_type %in% c("TC", "TCbest")) ts_type <- "Catch"
+    else if (sets$ts_type %in% c("SProd")) ts_type <- "Surplus production"
+    else if (sets$ts_type %in% c("Index", "index")) ts_type <- "Index"
+    else if (sets$ts_type %in% c("R")) ts_type <- "Recruitment"
+    else ts_type <- sets$ts_type
 
     # Plot timeseries and model fit [smooth]:
     if (plot_class != "abrupt"){
@@ -2919,7 +2922,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
         theme(legend.position = "none") %>%
         suppressWarnings()
 
-      # Plot additional breaktimes [chg]:
+      # Plot additional breakdates [chg]:
       if ("loc_aux1_chg" %in% names(best_traj)) {
 
         loc_aux_chg <- c(best_traj[["loc_aux1_chg"]][i],
@@ -2929,7 +2932,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                      col="dodgerblue4", linetype="dotted", alpha=0.5)
       }
 
-      # Plot as_detect breaktimes [asd]:
+      # Plot as_detect breakdates [asd]:
       if (!is.na(asd_loc[1])){
         p <- p +
           geom_vline(xintercept = asd_loc, col="red", linetype="dashed")
@@ -2966,7 +2969,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
     }
 
     if(plot_class == "abrupt"){
-      title_part <- paste0("<br>Breaktime(s): <span style='color:blue'>",
+      title_part <- paste0("<br>Breakdate(s): <span style='color:blue'>",
                            table_chg$loc_brk, "</span>",
                            if(!is.null(best_traj$loc_aux1_chg)) {
                              if(!(is.na(best_traj$loc_aux1_chg[i]) &
@@ -2991,8 +2994,11 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
       if (plot_class != "abrupt"){
 
         p <- p +
-          ggtitle(paste0("<b>",stringr::str_to_title(
-            sub("_"," ",rslt[i,]$best_class))," ", rslt[i,]$trend,"</b>",
+          ggtitle(paste0(
+            "<b><span style = 'color:#000000;'>",
+            stringr::str_to_title(
+              sub("_"," ",rslt[i,]$best_class))," ",
+            rslt[i,]$trend,"</span></b>",
             "<br>AICc = ", round(rslt[i,]$aic, digits=2),
             "  wAICc = ", best_traj[[paste0("weight_aic_", plot_class)]][i],
             "  LOO = ", round(best_traj[[paste0("loo_", plot_class)]][i],
@@ -3001,7 +3007,8 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                                 digits=2),
             title_part)) +
           theme(plot.title = ggtext::element_markdown(size=10,
-                                                      lineheight = 1.1))+
+                                                      lineheight = 1.1,
+                                                      colour="grey25"))+
           geom_point(data=best_traj_loo[[i]] %>%
                        dplyr::left_join(sets$ts[[i]], by="X") %>%
                        dplyr::filter(class==plot_class), aes(x=X, y=Y),
@@ -3012,21 +3019,24 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
 
         # Add title:
         p <- p +
-          ggtitle(paste0("<b>Abrupt ", rslt$abt_res$chg[i,]$trend,"</b>",
-                         "<br>AICc = ", round(table_chg$aic, digits=2),
-                         "  wAICc = ",
-                         best_traj[[paste0("weight_aic_", plot_class)]][i],
-                         "  LOO = ",
-                         round(best_traj[[paste0("loo_", plot_class)]][i],
-                               digits=2),
-                         "  NRMSE = ",
-                         round(best_traj[[paste0("nrmse_", plot_class)]][i],
-                               digits=2),
-                         title_part)) +
+          ggtitle(paste0(
+            "<b><span style = 'color:#000000;'>Abrupt ",
+            rslt$abt_res$chg[i,]$trend,"</span></b>",
+            "<br>AICc = ", round(table_chg$aic, digits=2),
+            "  wAICc = ",
+            best_traj[[paste0("weight_aic_", plot_class)]][i],
+            "  LOO = ",
+            round(best_traj[[paste0("loo_", plot_class)]][i],
+                  digits=2),
+            "  NRMSE = ",
+            round(best_traj[[paste0("nrmse_", plot_class)]][i],
+                  digits=2),
+            title_part)) +
           theme(plot.title = ggtext::element_markdown(size=10,
-                                                      lineheight = 1.1))+
+                                                      lineheight = 1.1,
+                                                      colour="grey25"))+
 
-          # Add histograms for LOO breaktimes:
+          # Add histograms for LOO breakdates:
           geom_histogram(data=best_traj_loo[[i]] %>%
                            dplyr::filter(class=="abrupt"),
                          aes(x=loc_brk_chg,
@@ -3038,11 +3048,12 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
           p <- p +
             geom_histogram(data=best_traj_loo[[i]] %>%
                              dplyr::filter(class=="abrupt") %>%
-                             dplyr::mutate(loc_brk_asd =
-                                             strsplit(loc_brk_asd, ";")) %>%
-                             tidyr::unnest(loc_brk_asd) %>%
-                             dplyr::mutate(loc_brk_asd =
-                                             as.numeric(loc_brk_asd)),
+                             dplyr::select(
+                               dplyr::matches("^loc_brk_asd_[0-9]+$")) %>%
+                             tidyr::pivot_longer(cols=dplyr::everything(),
+                                                 names_to = "brk_nb",
+                                                 values_to = "loc_brk_asd") %>%
+                             tidyr::drop_na(),
                            aes(x=loc_brk_asd,
                                y=after_stat(ncount)*
                                  max(sets$ts[[i]][[names(sets$ts[[i]])[2]]]
@@ -3067,30 +3078,37 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
       if (plot_class != "abrupt"){
 
         p <- p +
-          ggtitle(paste0("<b>", stringr::str_to_title(
-            sub("_"," ",rslt[i,]$best_class))," ", rslt[i,]$trend, "</b>",
+          ggtitle(paste0(
+            "<b><span style = 'color:#000000;'>",
+            stringr::str_to_title(
+              sub("_"," ",rslt[i,]$best_class))," ",
+            rslt[i,]$trend, "</span></b>",
             "<br>AICc = ", round(rslt[i,]$aic, digits=2),
             "  wAICc = ", best_traj[[paste0("weight_aic_", plot_class)]][i],
             "  NRMSE = ", round(best_traj[[paste0("nrmse_", plot_class)]][i],
                                 digits=2),
             title_part))+
           theme(plot.title = ggtext::element_markdown(size=10,
-                                                      lineheight = 1.1))
+                                                      lineheight = 1.1,
+                                                      colour="grey25"))
 
         # Add title (for abrupt fit):
       } else {
 
         p <- p +
-          ggtitle(paste0("<b>Abrupt ", rslt$abt_res$chg[i,]$trend,"</b>",
-                         "<br>AICc = ", round(table_chg$aic, digits=2),
-                         "  wAICc = ", best_traj[[paste0("weight_aic_",
-                                                         plot_class)]][i],
-                         "  NRMSE = ", round(best_traj[[paste0("nrmse_",
-                                                               plot_class)]][i],
-                                             digits=2),
-                         title_part)) +
+          ggtitle(paste0(
+            "<b><span style = 'color:#000000;'>Abrupt ",
+            rslt$abt_res$chg[i,]$trend,"</span></b>",
+            "<br>AICc = ", round(table_chg$aic, digits=2),
+            "  wAICc = ", best_traj[[paste0("weight_aic_",
+                                            plot_class)]][i],
+            "  NRMSE = ", round(best_traj[[paste0("nrmse_",
+                                                  plot_class)]][i],
+                                digits=2),
+            title_part)) +
           theme(plot.title = ggtext::element_markdown(size=10,
-                                                      lineheight = 1.1))
+                                                      lineheight = 1.1,
+                                                      colour="grey25"))
 
       }
     }
