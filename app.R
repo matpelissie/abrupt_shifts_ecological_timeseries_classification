@@ -65,10 +65,50 @@ ui <- shiny::fluidPage(
                            label = "Compute Leave-one-out indices",
                            value = FALSE),
 
+      shinyBS::bsCollapse(id = "cntrlC1", open = "Panel 2",
+                          shinyBS::bsCollapsePanel(title = "Adjust parameters",
+                                                   # shiny::checkboxInput(
+                                                   #   inputId = "not_use_asd",
+                                                   #   label = "Don't use asdetect method",
+                                                   #   value = FALSE),
 
-      shiny::sliderInput(inputId = "asd_thr",
-                         label = "asdetect threshold", min = 0,
-                         max = 1, value = 0.15, sep="", width='30%'),
+                                                   shiny::sliderInput(
+                                                     inputId = "asd_thr",
+                                                     label = "asdetect detection threshold",
+                                                     min = 0,  max = 1,
+                                                     value = 0.15, sep="",
+                                                     width='50%'),
+
+                                                   shiny::sliderInput(
+                                                     inputId = "mad_thr",
+                                                     label = "asdetect MAD threshold",
+                                                     min = 0,  max = 5,
+                                                     value = 3, sep="",
+                                                     width='50%'),
+
+                                                   shiny::sliderInput(
+                                                     inputId = "edge_lim",
+                                                     label = "Limit to edges",
+                                                     min = 0,  max = 10,
+                                                     value = 5, sep="",
+                                                     width='50%'),
+
+                                                   shiny::sliderInput(
+                                                     inputId = "congr_brk",
+                                                     label = "Congruence limit between brekpoints",
+                                                     min = 0,  max = 10,
+                                                     value = 5, sep="",
+                                                     width='50%'),
+
+                                 htmlOutput("dateSelector", inline = TRUE),
+                                 style = "info"
+                 )
+      ),
+
+
+      # shiny::sliderInput(inputId = "asd_thr",
+      #                    label = "asdetect threshold", min = 0,
+      #                    max = 1, value = 0.15, sep="", width='30%'),
 
 
       h5(shiny::HTML("wAICc: AICc weight <br/>
@@ -91,11 +131,15 @@ ui <- shiny::fluidPage(
       DT::dataTableOutput("tbl")
 
       # To add as input
-      # Expandable panel with asd_thr, asd or not, edge_lim, congruence_lim,
-      # mad_thr
+      # Expandable panel with asd or not-BUG,
+      # Possibility to show asdetect detection timeseries
+      # BUG when asd_check==TRUE and one of several asd_brk actually removed
 
       # To add as output
       # When breakpoint: shape before/after
+      # Relative change size
+
+      # Warning when fit is not good, with location of the 3 indices on density plots
 
 
     ) # end mainPanel
@@ -133,9 +177,17 @@ server <- function(input, output, session) {
       display <- NULL
     }
 
-    classif <- traj_class(sets=set, str="aic_asd", abr_mtd=c("chg", "asd"),
+    # if (input$not_use_asd==TRUE){
+    #   abr_mtd_usd <- c("chg")
+    # } else {
+      abr_mtd_usd <- c("chg", "asd")
+    # }
+
+    classif <- traj_class(sets=set, str="aic_asd", abr_mtd=abr_mtd_usd,
                           asd_thr=input$asd_thr, asd_chk=FALSE, type="data",
                           showplots=TRUE, apriori=FALSE, run_loo=input$loo,
+                          edge_lim=input$edge_lim, congr_brk=input$congr_brk,
+                          mad_thr=input$mad_thr,
                           save_plot=FALSE, two_bkps=TRUE, smooth_signif=TRUE,
                           outplot=TRUE, ind_plot=display, dirname=NULL)
     return(classif)
