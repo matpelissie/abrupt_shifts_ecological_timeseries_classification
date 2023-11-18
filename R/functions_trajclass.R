@@ -734,6 +734,7 @@ prep_data <- function(df, thr=0, type="sim", apriori){
     if ("iter" %in% names(df)){
 
       ts_type <- "TB"
+      time_type <- names(df)[3]
       dataset <- df %>%
         {if (apriori==TRUE) dplyr::select(., scen, iter, year, TB,
                                           expected_traj,
@@ -748,6 +749,7 @@ prep_data <- function(df, thr=0, type="sim", apriori){
   } else if (type=="RAM" | type=="data"){ # For empirical data
 
     ts_type <- names(df)[3]
+    time_type <- names(df)[2]
     iter <- 1
     dataset <- df %>%
       dplyr::rename(Y=dplyr::all_of(ts_type)) %>%
@@ -802,7 +804,7 @@ prep_data <- function(df, thr=0, type="sim", apriori){
       lapply(function(x) x %>% dplyr::filter(Y>thr))
   }
 
-  return(list("ts"=sets, "ts_type"=ts_type))
+  return(list("ts"=sets, "ts_type"=ts_type, "time_type"=time_type))
 
 }
 
@@ -1402,6 +1404,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                         aic=NA,
                         trend=NA,
                         mag=NA,
+                        rel_chg=NA,
                         SDbef=NA,
                         SDaft=NA,
                         nrmse=NA,
@@ -1499,6 +1502,9 @@ chg_fct <- function(ts){
                                          pred_chg$bp[length(pred_chg$bp)],
                                        "decrease", "increase"),
                         mag = pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1],
+                        rel_chg =
+                          (pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]) /
+                          pred_chg$bp[1],
                         SDbef = ts %>%
                           dplyr::filter(year<=chg$chngpt) %>%
                           dplyr::pull(Y) %>%
@@ -2015,7 +2021,8 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
                      dplyr::rename_with(~str_c(., paste0("_", x)))
                    )
             ),
-    res_abt$abt_res[["chg"]] %>% dplyr::select(mag, SDbef, SDaft, step_size),
+    res_abt$abt_res[["chg"]] %>%
+      dplyr::select(mag, rel_chg, SDbef, SDaft, step_size),
     lengths
   ) %>% dplyr::rename(signif_model = best_model_pol,
                       slope = slope_lin)
@@ -2565,8 +2572,8 @@ best_traj_aic <- function(class_res, type, apriori, aic_selec,
 
     dplyr::select(simu_id|contains("max_shape")|contains("expected")|
                     best_aic|signif_model|contains("loc")|contains("weight")|
-                    mag|contains("SD")|contains("nrmse")|slope|step_size|
-                    contains("not_abr")) %>%
+                    mag|rel_chg|contains("SD")|contains("nrmse")|slope|
+                    step_size|contains("not_abr")) %>%
 
     tidyr::pivot_longer(contains("max_shape"),
                         names_to = "best_model",
