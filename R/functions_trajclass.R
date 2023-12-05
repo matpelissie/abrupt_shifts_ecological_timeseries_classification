@@ -1408,8 +1408,8 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                         SDbef=NA,
                         SDaft=NA,
                         nrmse=NA,
-                        step_size=NA)
-  run <- NA
+                        abruptness=NA)
+  run <- list()
 
   if (length(where$as_pos)>0){
 
@@ -1436,7 +1436,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                                        c(where$as_pos[i], NA)[1] +
                                          start(stock_ts)[1] - 1)
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
-          run <- lapply(where$as_run, function(x) x + start(stock_ts)[1] - 1)
+          run <- c(run, list(where$as_run[[i]] + start(stock_ts)[1] - 1))
         }
 
       } else { # Without additional check
@@ -1448,11 +1448,14 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
                                        c(where$as_pos[i], NA)[1] +
                                          start(stock_ts)[1] - 1)
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
-          run <- lapply(where$as_run, function(x) x + start(stock_ts)[1] - 1)
+          run <- c(run, list(where$as_run[[i]] + start(stock_ts)[1] - 1))
         }
       }
     }
   }
+
+  # To keep length non null:
+  if(length(run)==0) run <- NA
 
   asd_out["loc_brk"] <- sub("NA;", "", asd_out["loc_brk"])
 
@@ -1515,7 +1518,7 @@ chg_fct <- function(ts){
                           sd(),
                         nrmse = nrmse
   )
-  chg_out <- chg_out %>% mutate(step_size = mag/((SDbef+SDaft)/2))
+  chg_out <- chg_out %>% mutate(abruptness = mag/((SDbef+SDaft)/2))
 
   return(list("chg_out" = chg_out, "pred_chg" = pred_chg))
 
@@ -1559,7 +1562,7 @@ shifts <- function(ts, abr_mtd, asd_thr, asd_chk,
   if ("asd" %in% abr_mtd){
 
     asd_out <- asd_fct(stock_ts, asd_thr, check_true_shift=asd_chk,
-                       lowwl, highwl=highwl, mad_thr, mad_cst)
+                       lowwl, highwl, mad_thr, mad_cst)
     res_table <- rbind(res_table, asd_out$df)
   }
 
@@ -1993,7 +1996,7 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
   res_nch <- res_trend(sets, niter=1, correction=FALSE, fit="nch")
   res_lin <- res_trend(sets, niter=1, correction=FALSE, fit="lin")
   res_pol <- res_trend(sets, niter=1, correction=FALSE, fit="pol")
-  res_abt <- abrupt_classif(sets, abr_mtd=abr_mtd, asd_thr, asd_chk,
+  res_abt <- abrupt_classif(sets, abr_mtd, asd_thr, asd_chk,
                             lowwl, highwl, mad_thr, mad_cst)
   lengths <- data.frame(first = sapply(sets, function(x) min(x$X),
                                        simplify="array"),
@@ -2022,7 +2025,7 @@ fit_models <- function(sets, abr_mtd, type, asd_thr, asd_chk, lowwl, highwl,
                    )
             ),
     res_abt$abt_res[["chg"]] %>%
-      dplyr::select(mag, rel_chg, SDbef, SDaft, step_size),
+      dplyr::select(mag, rel_chg, SDbef, SDaft, abruptness),
     lengths
   ) %>% dplyr::rename(signif_model = best_model_pol,
                       slope = slope_lin)
@@ -2573,7 +2576,7 @@ best_traj_aic <- function(class_res, type, apriori, aic_selec,
     dplyr::select(simu_id|contains("max_shape")|contains("expected")|
                     best_aic|signif_model|contains("loc")|contains("weight")|
                     mag|rel_chg|contains("SD")|contains("nrmse")|slope|
-                    step_size|contains("not_abr")) %>%
+                    abruptness|contains("not_abr")) %>%
 
     tidyr::pivot_longer(contains("max_shape"),
                         names_to = "best_model",
@@ -2994,8 +2997,8 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                            if(!is.na(asd_loc[1])) {
                              paste0("; <span style='color:red'>",
                                     paste(asd_loc,collapse=","),"</span>")},
-                           "  Step size = ",
-                           round(table_chg$step_size, digits=2))
+                           "  Abruptness = ",
+                           round(table_chg$abruptness, digits=2))
     }
 
     # Complement title if LOO performed:
