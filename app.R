@@ -4,6 +4,8 @@ library("tidyverse")
 source("analyses/00_packages.R")
 source("R/functions_trajclass.R")
 
+source("functions_trajclass.R")
+
 # Input data --------------------------------------------------------------
 
 color_gradient_bounded <- function(dt, column_name,
@@ -16,7 +18,7 @@ color_gradient_bounded <- function(dt, column_name,
                     backgroundColor = DT::styleEqual(
                       vals,
                       col_func(100)[round(round(vals, 2)*99+1,0)]))
-  }
+}
 
 prep_data_any <- function(df){
 
@@ -36,6 +38,8 @@ prep_data_any <- function(df){
   return(list("ts"=sets, "ts_type"=ts_type, "time_type"=time_time))
 }
 
+quality_df <- readr::read_csv("quality_control_df.csv")
+
 
 # user interface ----------------------------------------------------------
 
@@ -45,7 +49,7 @@ ui <- shiny::fluidPage(
   shiny::fluidPage(  # Application title
     shiny::h1("Timeseries classifier"),
     shiny::h2("Load single timeseries")
-    ),
+  ),
 
   shiny::sidebarLayout(
 
@@ -100,9 +104,9 @@ ui <- shiny::fluidPage(
                                                      value = 5, sep="",
                                                      width='50%'),
 
-                                 htmlOutput("dateSelector", inline = TRUE),
-                                 style = "info"
-                 )
+                                                   htmlOutput("dateSelector", inline = TRUE),
+                                                   style = "info"
+                          )
       ),
 
 
@@ -111,22 +115,33 @@ ui <- shiny::fluidPage(
       #                    max = 1, value = 0.15, sep="", width='30%'),
 
 
-      h5(shiny::HTML("wAICc: AICc weight <br/>
-         LOO: Leave-one-out score  <br/>
-         NRMSE: Normalized root mean square error")),
-
-
-      # Sources
+      # h5(shiny::HTML("wAICc: AICc weight <br/>
+      #    LOO: Leave-one-out score  <br/>
+      #    NRMSE: Normalized root mean square error")),
+      #
+      #
+      # # Sources
       p(shiny::h3(tags$strong("Sources"))),
 
-      p("..."),
+      p(h6("The code to run classification on several timeries is available",
+           a(href="https://anonymous.4open.science/r/traj_shift", "here")))
+
+      # p(h6("NB: This work is still under review, please do not share this app with others for the moment, thanks!"))
 
     ), # end sidebarPanel
 
     # Plot map
     shiny::mainPanel(
 
+      h2("Model fitting"),
+
       shiny::plotOutput("plot"),
+
+      h2("Quality of fit"),
+
+      shiny::plotOutput("qul"),
+
+      h2("Quality of fit - table"),
 
       DT::dataTableOutput("tbl")
 
@@ -180,7 +195,7 @@ server <- function(input, output, session) {
     # if (input$not_use_asd==TRUE){
     #   abr_mtd_usd <- c("chg")
     # } else {
-      abr_mtd_usd <- c("chg", "asd")
+    abr_mtd_usd <- c("chg", "asd")
     # }
 
     classif <- traj_class(sets=set, str="aic_asd", abr_mtd=abr_mtd_usd,
@@ -221,69 +236,131 @@ server <- function(input, output, session) {
 
     if(input$loo == TRUE){
 
-        tb <- traj_class_out()$best_traj %>%
-          dplyr::select(dplyr::contains("weight")) %>%
-          t() %>% cbind(
-            traj_class_out()$best_traj %>%
-              dplyr::select(dplyr::contains("loo")) %>%
-              t()
-          ) %>% cbind(
-            traj_class_out()$best_traj %>%
-              dplyr::select(dplyr::contains("nrmse") &
-                              !"nrmse_asd") %>%
-              t()
-          ) %>%
-          `colnames<-`(c("wAICc", "LOO", "NRMSE")) %>%
-          `rownames<-`(c("no change", "linear", "quadratic", "abrupt")) %>%
-          as_tibble(rownames = "class") %>%
-          dplyr::mutate(best_class = ifelse(class==bestclass, 1, 0)) %>%
-          dplyr::mutate(wAICc = round(wAICc, digits=3),
-                        LOO = round(LOO, digits=3),
-                        NRMSE = round(NRMSE, digits=3)) %>%
-          DT::datatable() %>%
-          DT::formatStyle(
-            "best_class",
-            target = 'row',
-            backgroundColor = DT::styleEqual(c(1, 0), c('lightgreen', 'white'))) %>%
-          color_gradient_bounded(column_name="wAICc", c("grey95","#6666FF")) %>%
-          color_gradient_bounded(column_name="LOO", c("grey95","#6666FF")) %>%
-          color_gradient_bounded(column_name="NRMSE", c("#6666FF","grey95"))
+      tb <- traj_class_out()$best_traj %>%
+        dplyr::select(dplyr::contains("weight")) %>%
+        t() %>% cbind(
+          traj_class_out()$best_traj %>%
+            dplyr::select(dplyr::contains("loo")) %>%
+            t()
+        ) %>% cbind(
+          traj_class_out()$best_traj %>%
+            dplyr::select(dplyr::contains("nrmse") &
+                            !"nrmse_asd") %>%
+            t()
+        ) %>%
+        `colnames<-`(c("wAICc", "LOO", "NRMSE")) %>%
+        `rownames<-`(c("no change", "linear", "quadratic", "abrupt")) %>%
+        as_tibble(rownames = "class") %>%
+        dplyr::mutate(best_class = ifelse(class==bestclass, 1, 0)) %>%
+        dplyr::mutate(wAICc = round(wAICc, digits=3),
+                      LOO = round(LOO, digits=3),
+                      NRMSE = round(NRMSE, digits=3)) %>%
+        DT::datatable() %>%
+        DT::formatStyle(
+          "best_class",
+          target = 'row',
+          backgroundColor = DT::styleEqual(c(1, 0), c('lightgreen', 'white'))) %>%
+        color_gradient_bounded(column_name="wAICc", c("grey95","#6666FF")) %>%
+        color_gradient_bounded(column_name="LOO", c("grey95","#6666FF")) %>%
+        color_gradient_bounded(column_name="NRMSE", c("#6666FF","grey95"))
 
     } else {
 
-        tb <- traj_class_out()$best_traj %>%
-          dplyr::select(dplyr::contains("weight")) %>%
-          t() %>% cbind(
-            traj_class_out()$best_traj %>%
-              dplyr::select(dplyr::contains("nrmse") &
-                              !"nrmse_asd") %>%
-              t()
-          ) %>%
-          `colnames<-`(c("wAICc", "NRMSE")) %>%
-          `rownames<-`(c("no change", "linear", "quadratic", "abrupt")) %>%
-          as_tibble(rownames = "class") %>%
-          dplyr::mutate(best_class = ifelse(class==bestclass, 1, 0)) %>%
-          dplyr::mutate(wAICc = round(wAICc, digits=3),
-                        NRMSE = round(NRMSE, digits=3)) %>%
-          DT::datatable() %>%
-          DT::formatStyle(
-            "best_class",
-            target = 'row',
-            backgroundColor = DT::styleEqual(c(1, 0), c('lightgreen', 'white'))) %>%
-          color_gradient_bounded(column_name="wAICc", c("grey95","#6666FF")) %>%
-          color_gradient_bounded(column_name="NRMSE", c("#6666FF","grey95"))
+      tb <- traj_class_out()$best_traj %>%
+        dplyr::select(dplyr::contains("weight")) %>%
+        t() %>% cbind(
+          traj_class_out()$best_traj %>%
+            dplyr::select(dplyr::contains("nrmse") &
+                            !"nrmse_asd") %>%
+            t()
+        ) %>%
+        `colnames<-`(c("wAICc", "NRMSE")) %>%
+        `rownames<-`(c("no change", "linear", "quadratic", "abrupt")) %>%
+        as_tibble(rownames = "class") %>%
+        dplyr::mutate(best_class = ifelse(class==bestclass, 1, 0)) %>%
+        dplyr::mutate(wAICc = round(wAICc, digits=3),
+                      NRMSE = round(NRMSE, digits=3)) %>%
+        DT::datatable() %>%
+        DT::formatStyle(
+          "best_class",
+          target = 'row',
+          backgroundColor = DT::styleEqual(c(1, 0), c('lightgreen', 'white'))) %>%
+        color_gradient_bounded(column_name="wAICc", c("grey95","#6666FF")) %>%
+        color_gradient_bounded(column_name="NRMSE", c("#6666FF","grey95"))
 
     }
 
     return(tb)
 
-    })
+  })
 
 
   output$tbl <- DT::renderDataTable({ tbl() })
 
+  qul <- shiny::reactive({
 
-}
+    shiny::req(traj_class_out)
+
+    bestclass <- traj_class_out()$best_traj$class
+
+    if(input$loo == TRUE){
+
+      quality_scores <- traj_class_out()$best_traj %>%
+        dplyr::select(paste0(c("loo_", "nrmse_","weight_aic_"), bestclass)) %>%
+        `colnames<-`(c("LOO","NRMSE", "wAICc")) %>%
+        tidyr::pivot_longer(cols = dplyr::everything(),
+                            names_to = "metric", values_to = "vals")
+
+      quality_inds <- ggplot(quality_df %>%
+                               dplyr::filter(class_tested==class,
+                                             class==bestclass) %>%
+                               dplyr::mutate(correct = ifelse(class==expected_class,
+                                                              TRUE, FALSE)),
+                             aes(x = value, fill = correct)) +
+        geom_density(alpha = 0.4, position="identity", adjust=3) +
+        theme_classic() +
+        expand_limits(y=c(0,1))+
+        facet_wrap(nrow=1, facets=vars(metric), scales="free_y")+
+        theme(legend.position = "none")+
+        scale_linetype_manual(values = c("TRUE" = "solid", "FALSE" = "dashed")) +
+        scale_colour_manual(values = c("TRUE" = "#00bfc4", "FALSE" = "#f8766d")) +
+        geom_vline(data = quality_scores, aes(xintercept = vals),
+                   colour="red", linewidth=1)
+
+    } else {
+
+      quality_scores <- traj_class_out()$best_traj %>%
+        dplyr::select(paste0(c("nrmse_","weight_aic_"), bestclass)) %>%
+        `colnames<-`(c("NRMSE", "wAICc")) %>%
+        tidyr::pivot_longer(cols = dplyr::everything(),
+                            names_to = "metric", values_to = "vals")
+
+      quality_inds <- ggplot(quality_df %>%
+                               dplyr::filter(class_tested==class,
+                                             class==bestclass,
+                                             metric != "LOO") %>%
+                               dplyr::mutate(correct = ifelse(class==expected_class,
+                                                              TRUE, FALSE)),
+                             aes(x = value, fill = correct)) +
+        geom_density(alpha = 0.4, position="identity", adjust=3) +
+        theme_classic() +
+        expand_limits(y=c(0,1))+
+        facet_wrap(nrow=1, facets=vars(metric), scales="free_y")+
+        theme(legend.position = "none")+
+        scale_linetype_manual(values = c("TRUE" = "solid", "FALSE" = "dashed")) +
+        scale_colour_manual(values = c("TRUE" = "#00bfc4", "FALSE" = "#f8766d")) +
+        geom_vline(data = quality_scores, aes(xintercept = vals),
+                   colour="red", linewidth=1)
+
+    }
+
+    return(quality_inds)
+
+  })
+
+  output$qul <- shiny::renderPlot({ qul() })
+
+} # end server
 
 
 # Launch app --------------------------------------------------------------
