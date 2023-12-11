@@ -701,9 +701,9 @@ bifurc_analysis <- function(Ts, K, rmax=3, rstep=0.1,
 extract_RAM <- function(id, ts_type){
 
   ts <- timeseries_values_views %>%
-    dplyr::filter(stockid == id) %>%
-    dplyr::select(year, tidyselect::all_of(ts_type)) %>%
-    dplyr::mutate(scen = paste(ts_type, id, sep="_")) %>%
+    dplyr::filter(stockid %in% id) %>%
+    dplyr::mutate(scen = paste(ts_type, stockid, sep="_")) %>%
+    dplyr::select(scen, year, tidyselect::all_of(ts_type)) %>%
     dplyr::relocate(scen) %>%
     na.omit()
 
