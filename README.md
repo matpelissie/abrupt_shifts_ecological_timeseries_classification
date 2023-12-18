@@ -20,3 +20,8 @@ The R scripts are named according the order they should be sourced to reproduce 
 01_generate_timeseries.R simulates and saves the timeseries to be used in analyses and figures.  
 02_run_classification.R performs the trajectory classifications. **This step is long!** Optimally, it should be run on a multicore machine to parallel the computations.  
 03_figures.R generates the material to make the figures from the manuscript's main text and supplementary.  
+
+
+# How to classify your own timeseries?
+
+A graphical user interface (GUI) is available [online](https://matpelissie.shinyapps.io/trajshift_app/) to classify single timeseries by providing a `.csv` file.
