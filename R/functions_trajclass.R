@@ -752,7 +752,8 @@ prep_data <- function(df, thr=0, type="sim", apriori){
     time_type <- names(df)[2]
     iter <- 1
     dataset <- df %>%
-      dplyr::rename(Y=dplyr::all_of(ts_type)) %>%
+      dplyr::rename(Y=dplyr::all_of(ts_type),
+                    year=dplyr::all_of(time_type)) %>%
       dplyr::mutate(iter = 1)
 
     scen_list <- df %>% dplyr::distinct(scen) %>% dplyr::pull()
