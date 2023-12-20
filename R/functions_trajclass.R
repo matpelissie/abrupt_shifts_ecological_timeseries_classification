@@ -2410,10 +2410,9 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
 #' with asdetect ("aic_asd").
 #' @param smooth_signif Logical, should significance of the coefficient be taken
 #'  into account in the selection of best model.
-#' @param edge_lim Numeric, minimal breakpoint distance to start or end dates
-#' (default 5 timesteps).
+#' @param edge_lim Numeric, minimal breakpoint distance to start or end dates.
 #' @param congr_brk Numeric, maximal acceptable distance between chngpt and
-#' as_detect breaks (default 5 timesteps).
+#' as_detect breaks.
 #'
 #' @return Data frame with the output of the best fitting model,
 #' trajectory, and class.
@@ -2505,8 +2504,17 @@ best_traj_aic <- function(class_res, type, apriori, aic_selec,
     best_traj <- best_traj %>%
       dplyr::filter(vals == 0) %>%
       dplyr::select(-vals) %>%
-      dplyr::left_join(rank_aic, by="simu_id") %>%
+      dplyr::left_join(rank_aic, by="simu_id")
+
+    # If best AICc model is abrupt but do not fill in the edge limit criterion
+    # take 2nd best model in the ranking:
+    best_traj <- best_traj %>%
+      dplyr::mutate(best_aic = ifelse(best_aic=="aic_chg" &
+                                        (loc_brk_chg-first<edge_lim |
+                                           last-loc_brk_chg<edge_lim),
+                                      aic_rank2, best_aic)) %>%
       dplyr::mutate(best_aic = sub("aic_","max_shape_", best_aic))
+
   }
 
 
