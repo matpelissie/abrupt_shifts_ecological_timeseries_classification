@@ -688,24 +688,28 @@ bifurc_analysis <- function(Ts, K, rmax=3, rstep=0.1,
 
 
 
-#' Extract a stock RAMLBD timeseries
+#' Extract stocks RAMLBD timeseries
 #' (the RAMLBD should be loaded in the environment)
 #'
 #' @param id Short stock ID character.
 #' @param ts_type Type of timeseries (TBbest, ERbest...) character.
+#' @param drop_na Keep only years with all types of timeseries available.
 #'
 #' @return Data frame of the selected timeseries.
 #'
 #' @export
 
-extract_RAM <- function(id, ts_type){
+extract_RAM <- function(id, ts_type, drop_na=TRUE){
 
   ts <- timeseries_values_views %>%
     dplyr::filter(stockid %in% id) %>%
     dplyr::mutate(scen = paste(ts_type, stockid, sep="_")) %>%
     dplyr::select(scen, year, tidyselect::all_of(ts_type)) %>%
-    dplyr::relocate(scen) %>%
-    na.omit()
+    dplyr::relocate(scen)
+
+  if (drop_na){
+    ts <- ts %>% na.omit()
+  }
 
   return(ts)
 
