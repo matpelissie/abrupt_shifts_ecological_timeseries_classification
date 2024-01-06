@@ -255,10 +255,10 @@ df_list_odo <- df_odo_brit %>%
   dplyr::group_split() %>%
   stats::setNames(species)
 
-df_list_plty <- df_list_odo["Erythromma najas"]
+df_list_ertn <- df_list_odo["Erythromma najas"]
 
 # Run the classification:
-output_odo <- run_classif_data(df_list=df_list_plty, min_len=20, asd_thr=0.15,
+output_odo <- run_classif_data(df_list=df_list_ertn, min_len=20, asd_thr=0.15,
                                str="aic_asd", showplots=TRUE,
                                run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                group="species", time="year", variable="index",
@@ -352,7 +352,9 @@ no_abt <-
 
                   sets <- prep_data(df=simu_list[[i]], thr=-1,
                                     type="sim", apriori=TRUE)
-                  sets <- list("ts"=c(sets$ts[id]), "ts_type"=sets$ts_type)
+                  sets <- list("ts"=c(sets$ts[id]),
+                               "ts_type"=sets$ts_type,
+                               "time_type"=sets$time_type)
                   trajs <- traj_class(sets, str="aic_asd",
                                       abr_mtd=c("chg", "asd"),
                                       noise_comb=noise_comb, asd_chk=TRUE,
@@ -382,7 +384,9 @@ abt <- lapply(1:length(simu_list),
 
                 sets <- prep_data(df=simu_list[[i]], thr=-1,
                                   type="sim", apriori=TRUE)
-                sets <- list("ts"=c(sets$ts[601]), "ts_type"=sets$ts_type)
+                sets <- list("ts"=c(sets$ts[601]),
+                             "ts_type"=sets$ts_type,
+                             "time_type"=sets$time_type)
                 trajs <- traj_class(sets, str="aic_asd",
                                     abr_mtd=c("chg", "asd"),
                                     noise_comb=noise_comb, asd_chk=TRUE,
@@ -906,7 +910,7 @@ sets <- prep_data(df=simu_list_mltbrk[[i]], thr=-1, type="sim", apriori=TRUE)
 subsets <- list("ts"=c(sets$ts[1], sets$ts[26], sets$ts[51], sets$ts[76],
                     sets$ts[101], sets$ts[126], sets$ts[151], sets$ts[176],
                     sets$ts[201], sets$ts[226], sets$ts[251], sets$ts[276]),
-             "ts_type"=sets$ts_type)
+             "ts_type"=sets$ts_type, "time_type"=sets$time_type)
 
 
 # Run the classification:
@@ -1066,10 +1070,10 @@ p_odo1 <- output_odo1$outlist$`Erythromma viridulum`$class_plot +
   ggtitle("Small red-eyed damselfly (Erythromma viridulum) in Britain")
 
 
-df_list_plat <- df_list_odo["Platycnemis pennipes"]
+df_list_aesh <- df_list_odo["Aeshna mixta"]
 
 # Run the classification:
-output_odo2 <- run_classif_data(df_list=df_list_plat, min_len=20, asd_thr=0.15,
+output_odo2 <- run_classif_data(df_list=df_list_aesh, min_len=20, asd_thr=0.15,
                                str="aic_asd", showplots=TRUE, save_plot=FALSE,
                                run_loo=TRUE, two_bkps=TRUE, smooth_signif=TRUE,
                                group="species", time="year", variable="index",
@@ -1077,9 +1081,9 @@ output_odo2 <- run_classif_data(df_list=df_list_plat, min_len=20, asd_thr=0.15,
                                dirname="analyses/")
 
 # Plot the best trajectory shape:
-p_odo2 <- output_odo2$outlist$`Platycnemis pennipes`$class_plot +
+p_odo2 <- output_odo2$outlist$`Aeshna mixta`$class_plot +
   theme_update(plot.title = element_text(hjust = 0.5))+
-  ggtitle("White-megged damselfly (Platycnemis pennipes) in Britain")
+  ggtitle("Migrant hawker dragonfly (Aeshna mixta) in Britain")
 
 
 # Combine plots and save the figure:
