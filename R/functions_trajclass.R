@@ -1359,7 +1359,7 @@ res_trend <- function(sets,
 
 #' Breakpoints analysis using 'asdetect' package
 #'
-#' @param stock_ts Timeseries to analyse as 'ts' object.
+#' @param ts Timeseries to analyse as 'ts' object.
 #' @param asd_thr Numeric threshold in detection timeseries.
 #' @param check_true_shift Logical parameter to perform or not the check that
 #' the detected shift(s) do not correspond to a flat section.
@@ -1380,12 +1380,18 @@ res_trend <- function(sets,
 #'
 #' @export
 
-asd_fct <- function(stock_ts, asd_thr, check_true_shift,
+asd_fct <- function(ts, asd_thr, check_true_shift,
                     lowwl, highwl, mad_thr, mad_cst){
 
+  time <- ts %>%
+    dplyr::pull(1)
+
+  vals <- ts %>%
+    dplyr::pull(ncol(ts))
+
   # Make the detection timeseries:
-  len <- length(stock_ts)
-  detect <- as_detect_mad(stock_ts, lowwl=lowwl, highwl=highwl,
+  len <- length(vals)
+  detect <- as_detect_mad(vals, lowwl=lowwl, highwl=highwl,
                           mad_thr=mad_thr, mad_cst=mad_cst)
 
   # Return position(s) of shift(s) (or of the maximum detected value):
@@ -1400,6 +1406,7 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
     where <- where_low
 
   }
+
 
   # Summarize as_detect outputs in one line (with potentially multiple shifts):
   asd_out <- data.frame(abbr="asd",
@@ -1427,10 +1434,10 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
           # Returns 1 if true abrupt shift detected,
           # using fixed section length for short timeseries
           if (len<20) true_shift <-
-              custom_shift_type(stock_ts, where$as_pos[i], width = 2)
+              custom_shift_type(vals, where$as_pos[i], width = 2)
 
           else true_shift <-
-              custom_shift_type(stock_ts, where$as_pos[i], width = "tenth")
+              custom_shift_type(vals, where$as_pos[i], width = "tenth")
 
         } else {true_shift <- 0}
 
@@ -1438,10 +1445,9 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
         if (abs(where$dt_val[i])>asd_thr & true_shift == 1){
 
           asd_out["loc_brk"] <- paste0(asd_out["loc_brk"],";",
-                                       c(where$as_pos[i], NA)[1] +
-                                         start(stock_ts)[1] - 1)
+                                       c(time[where$as_pos][i], NA)[1])
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
-          run <- c(run, list(where$as_run[[i]] + start(stock_ts)[1] - 1))
+          run <- c(run, list(time[where$as_run[[i]]]))
         }
 
       } else { # Without additional check
@@ -1450,10 +1456,9 @@ asd_fct <- function(stock_ts, asd_thr, check_true_shift,
         if (abs(where$dt_val[i])>asd_thr){
 
           asd_out["loc_brk"] <- paste0(asd_out["loc_brk"],";",
-                                       c(where$as_pos[i], NA)[1] +
-                                         start(stock_ts)[1] - 1)
+                                       c(time[where$as_pos][i], NA)[1])
           asd_out["n_brk"] <- asd_out["n_brk"] + 1
-          run <- c(run, list(where$as_run[[i]] + start(stock_ts)[1] - 1))
+          run <- c(run, list(time[where$as_run[[i]]]))
         }
       }
     }
@@ -1491,7 +1496,10 @@ chg_fct <- function(ts){
   Y <- tail(names(ts),1)
   chg <- chngpt::chngptm(formula.1 = as.formula(paste(Y,"~1")),
                          formula.2 = ~year,
-                         type="step", family="gaussian", data=ts)
+                         type="step", family="gaussian",
+                         data=ts %>%
+                           dplyr::mutate(year=as.numeric(year)) # for dates
+                         )
 
   # Get predicted values from the model:
   pred_chg <- data.frame(year = ts$year,
@@ -1558,15 +1566,15 @@ shifts <- function(ts, abr_mtd, asd_thr, asd_chk,
                    lowwl, highwl, mad_thr, mad_cst){
 
   stock_ts <- ts %>%
-    dplyr::pull(ncol(ts)) %>%
-    ts(start=ts$year[1], end=tail(ts$year,1))
+    dplyr::pull(ncol(ts))
+    # ts(start=ts$year[1], end=tail(ts$year,1))
 
   res_table <- data.frame()
 
   # Run asdetect method:
   if ("asd" %in% abr_mtd){
 
-    asd_out <- asd_fct(stock_ts, asd_thr, check_true_shift=asd_chk,
+    asd_out <- asd_fct(ts, asd_thr, check_true_shift=asd_chk,
                        lowwl, highwl, mad_thr, mad_cst)
     res_table <- rbind(res_table, asd_out$df)
   }
@@ -2849,12 +2857,15 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
           theme_light(base_size = 7)+
           labs(x = time_type, y = ts_type)+
           expand_limits(y=0)+
-          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+
-              rslt[i,]$inter}, color="blue")+
-          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+
-              rslt[i,]$inter-rslt[i,]$strd}, linetype = "dashed", color="blue")+
-          stat_function(fun=function(x){rslt[i,]$alpha2*x^2+rslt[i,]$alpha1*x+
-              rslt[i,]$inter+rslt[i,]$strd}, linetype = "dashed", color="blue")
+          stat_function(fun=function(x){
+            rslt[i,]$alpha2*as.numeric(x)^2+
+              rslt[i,]$alpha1*as.numeric(x)+rslt[i,]$inter}, color="blue")+
+          stat_function(fun=function(x){rslt[i,]$alpha2*as.numeric(x)^2+
+              rslt[i,]$alpha1*as.numeric(x)+rslt[i,]$inter-rslt[i,]$strd},
+              linetype = "dashed", color="blue")+
+          stat_function(fun=function(x){rslt[i,]$alpha2*as.numeric(x)^2+
+              rslt[i,]$alpha1*as.numeric(x)+rslt[i,]$inter+rslt[i,]$strd},
+              linetype = "dashed", color="blue")
       })
 
       # Plot timeseries and model fit [abrupt]:
@@ -2869,7 +2880,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
         asd_ts <- rslt$shifts_res[[i]]$asd_detect %>%
           tibble::as_tibble() %>%
           tibble::rownames_to_column(var="year") %>%
-          dplyr::mutate(year=as.numeric(year)+sets$ts[[i]]$X[1]-1)
+          dplyr::mutate(year=sets$ts[[i]]$X[as.numeric(year)])
 
         # Location of shift(s):
         asd_loc <- rslt$abt_res$asd %>% dplyr::slice(i) %>%
