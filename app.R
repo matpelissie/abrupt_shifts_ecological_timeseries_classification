@@ -4,7 +4,6 @@ library("tidyverse")
 source("analyses/00_packages.R")
 source("R/functions_trajclass.R")
 
-source("functions_trajclass.R")
 
 # Input data --------------------------------------------------------------
 
@@ -71,10 +70,11 @@ ui <- shiny::fluidPage(
 
       shinyBS::bsCollapse(id = "cntrlC1", open = "Panel 2",
                           shinyBS::bsCollapsePanel(title = "Adjust parameters",
-                                                   # shiny::checkboxInput(
-                                                   #   inputId = "not_use_asd",
-                                                   #   label = "Don't use asdetect method",
-                                                   #   value = FALSE),
+
+                                                   shiny::checkboxInput(
+                                                     inputId = "use_asd",
+                                                     label = "Use asdetect method",
+                                                     value = TRUE),
 
                                                    shiny::sliderInput(
                                                      inputId = "asd_thr",
@@ -110,23 +110,19 @@ ui <- shiny::fluidPage(
       ),
 
 
-      # shiny::sliderInput(inputId = "asd_thr",
-      #                    label = "asdetect threshold", min = 0,
-      #                    max = 1, value = 0.15, sep="", width='30%'),
-
-
       # h5(shiny::HTML("wAICc: AICc weight <br/>
       #    LOO: Leave-one-out score  <br/>
       #    NRMSE: Normalized root mean square error")),
-      #
-      #
+
+
       # # Sources
       p(shiny::h3(tags$strong("Sources"))),
 
-      p(h6("The code to run classification on several timeries is available",
-           a(href="https://anonymous.4open.science/r/traj_shift", "here")))
+      p(h6(shiny::HTML("Pélissié M., Devictor V. & Dakos V. <i>In Press</i>. A systematic approach for detecting abrupt shifts in ecological timeseries",
+           "<i>Biological Conservation</i>"))),
 
-      # p(h6("NB: This work is still under review, please do not share this app with others for the moment, thanks!"))
+      p(h6("The code to run classification on several timeries is available",
+           a(href="https://github.com/matpelissie/abrupt_shifts_ecological_timeseries_classification", "here")))
 
     ), # end sidebarPanel
 
@@ -146,15 +142,15 @@ ui <- shiny::fluidPage(
       DT::dataTableOutput("tbl")
 
       # To add as input
-      # Expandable panel with asd or not-BUG,
+      # Expandable panel with asd or not -BUG,
       # Possibility to show asdetect detection timeseries
-      # BUG when asd_check==TRUE and one of several asd_brk actually removed
+      # Possibility to change the moving window on which the classification is done
 
       # To add as output
       # When breakpoint: shape before/after
       # Relative change size
 
-      # Warning when fit is not good, with location of the 3 indices on density plots
+      # Warning when fit is not good
 
 
     ) # end mainPanel
@@ -192,19 +188,27 @@ server <- function(input, output, session) {
       display <- NULL
     }
 
-    # if (input$not_use_asd==TRUE){
-    #   abr_mtd_usd <- c("chg")
-    # } else {
-    abr_mtd_usd <- c("chg", "asd")
-    # }
+    if (input$use_asd==TRUE){
+      abr_mtd_usd <- c("chg", "asd")
+      str <- "aic_asd"
+    } else {
+      abr_mtd_usd <- c("chg")
+      str <- "aic"
+    }
 
-    classif <- traj_class(sets=set, str="aic_asd", abr_mtd=abr_mtd_usd,
-                          asd_thr=input$asd_thr, asd_chk=FALSE, type="data",
+    classif <- traj_class(sets=set, str=str, abr_mtd=abr_mtd_usd,
+                          asd_thr=input$asd_thr, asd_chk=TRUE, type="data",
                           showplots=TRUE, apriori=FALSE, run_loo=input$loo,
                           edge_lim=input$edge_lim, congr_brk=input$congr_brk,
                           mad_thr=input$mad_thr,
                           save_plot=FALSE, two_bkps=TRUE, smooth_signif=TRUE,
                           outplot=TRUE, ind_plot=display, dirname=NULL)
+
+    if(input$use_asd==TRUE) classif$best_traj <-
+      classif$best_traj %>%
+      dplyr::select(-nrmse_asd)
+
+
     return(classif)
 
   })
@@ -244,8 +248,7 @@ server <- function(input, output, session) {
             t()
         ) %>% cbind(
           traj_class_out()$best_traj %>%
-            dplyr::select(dplyr::contains("nrmse") &
-                            !"nrmse_asd") %>%
+            dplyr::select(dplyr::contains("nrmse"))%>%
             t()
         ) %>%
         `colnames<-`(c("wAICc", "LOO", "NRMSE")) %>%
@@ -270,8 +273,7 @@ server <- function(input, output, session) {
         dplyr::select(dplyr::contains("weight")) %>%
         t() %>% cbind(
           traj_class_out()$best_traj %>%
-            dplyr::select(dplyr::contains("nrmse") &
-                            !"nrmse_asd") %>%
+            dplyr::select(dplyr::contains("nrmse")) %>%
             t()
         ) %>%
         `colnames<-`(c("wAICc", "NRMSE")) %>%
@@ -294,8 +296,8 @@ server <- function(input, output, session) {
 
   })
 
-
   output$tbl <- DT::renderDataTable({ tbl() })
+
 
   qul <- shiny::reactive({
 
