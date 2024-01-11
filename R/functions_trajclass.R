@@ -1384,7 +1384,8 @@ asd_fct <- function(ts, asd_thr, check_true_shift,
                     lowwl, highwl, mad_thr, mad_cst){
 
   time <- ts %>%
-    dplyr::pull(1)
+    dplyr::pull(1) %>%
+    as.numeric()
 
   vals <- ts %>%
     dplyr::pull(ncol(ts))
@@ -1565,10 +1566,6 @@ chg_fct <- function(ts){
 shifts <- function(ts, abr_mtd, asd_thr, asd_chk,
                    lowwl, highwl, mad_thr, mad_cst){
 
-  stock_ts <- ts %>%
-    dplyr::pull(ncol(ts))
-    # ts(start=ts$year[1], end=tail(ts$year,1))
-
   res_table <- data.frame()
 
   # Run asdetect method:
@@ -1629,7 +1626,8 @@ abrupt_classif <- function(sets, abr_mtd,
                            asd_thr, asd_chk, lowwl, highwl, mad_thr, mad_cst){
 
   ts <- sets %>%
-    lapply(function(x) dplyr::select(x, c(X,Y)) %>% dplyr::rename(year=X))
+    lapply(function(x) dplyr::select(x, c(X,Y)) %>%
+             dplyr::rename(year=X))
 
   # Perform breakpoint analyses on each timeseries:
   shifts_res <- ts %>%
@@ -2142,7 +2140,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
       dplyr::select(simu_id, loc_brk_chg)
 
     # If some timeseries have breakpoints:
-    if(nrow(list_brk_ts) != 0){
+    if (nrow(list_brk_ts) != 0){
 
       # Split timeseries (keeping the breakpoint in each):
       sets2 <- list()
@@ -2233,7 +2231,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
 
 
   ### Leave-One-Out timeseries
-  if(run_loo){
+  if (run_loo){
 
     # Make all leave-one-out timeseries and name them accordingly:
     loo <- lapply(sets$ts, function(x) lapply(1:nrow(x), function(k) x[-k,]))
@@ -2280,7 +2278,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
   }
 
   # store asd parameters:
-  if(str == "aic_asd") best_traj <- best_traj %>%
+  if (str == "aic_asd") best_traj <- best_traj %>%
       dplyr::mutate(asd_thr=asd_thr,
                     lowwl=lowwl,
                     highwl=highwl,
@@ -2290,6 +2288,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
   if(showplots == TRUE){
 
     if(!run_loo) best_traj_loo <- NULL
+    if(sapply(sets$ts[[1]], lubridate::is.Date)[[1]]==TRUE) is_date <- TRUE
 
     ## Make plots:
     plots_traj_nch <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_nch,
@@ -2308,7 +2307,9 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
       plot_traj_multi_abt(sets, rslt=res$res_fit$res_abt, best_traj,
                           plot_class="abrupt", asd_thr,
                           best_traj_loo=best_traj_loo,
-                          detection_plot=detection_plot, ind_plot=ind_plot)
+                          detection_plot=detection_plot,
+                          ind_plot=ind_plot,
+                          is_date=is_date)
 
     if(!is.null(ind_plot)){
       if(ind_plot=="best"){
@@ -2816,6 +2817,8 @@ run_classif_data <- function(df_list, min_len=20, str, asd_thr,
 #' @param detection_plot Logical to plot the detection plot.
 #' @param ind_plot Character to return the last plot for a given trajectory
 #' (either "nch", "lin", "pol", "abt", or "best").
+#' @param is_date Logical that indicates if the x axis is given as date or
+#' numeric.
 #'
 #' @return List of plots with best fit
 #'
@@ -2823,7 +2826,8 @@ run_classif_data <- function(df_list, min_len=20, str, asd_thr,
 
 plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
                                 asd_thr=NULL, best_traj_loo=NULL,
-                                detection_plot=TRUE, ind_plot=NULL){
+                                detection_plot=TRUE, ind_plot=NULL,
+                                is_date=FALSE){
 
   # Initiate plots:
   if (plot_class != "abrupt") plots <-
@@ -3008,22 +3012,48 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
     }
 
     if(plot_class == "abrupt"){
-      title_part <- paste0("<br>Breakdate(s): <span style='color:blue'>",
-                           table_chg$loc_brk, "</span>",
-                           if(!is.null(best_traj$loc_aux1_chg)) {
-                             if(!(is.na(best_traj$loc_aux1_chg[i]) &
-                                  is.na(best_traj$loc_aux2_chg[i]))) {
-                               paste0(" (<span style='color:dodgerblue4'>",
-                                      best_traj$loc_aux1_chg[i],"</span>",
-                                      ", <span style='color:dodgerblue4'>",
-                                      best_traj$loc_aux2_chg[i],"</span>)")
-                             }
-                           },
-                           if(!is.na(asd_loc[1])) {
-                             paste0("; <span style='color:red'>",
-                                    paste(asd_loc,collapse=","),"</span>")},
-                           "  Abruptness = ",
-                           round(table_chg$abruptness, digits=2))
+      if(is_date==TRUE){
+
+        title_part <- paste0(
+          "<br>Breakdate(s): <span style='color:blue'>",
+          lubridate::as_date(table_chg$loc_brk), "</span>",
+          if("loc_aux1_chg" %in% names(best_traj)) {
+            if(!(is.na(best_traj$loc_aux1_chg[i]) &
+                 is.na(best_traj$loc_aux2_chg[i]))) {
+              paste0(" (<span style='color:dodgerblue4'>",
+                     lubridate::as_date(best_traj$loc_aux1_chg[i]),"</span>",
+                     ", <span style='color:dodgerblue4'>",
+                     lubridate::as_date(best_traj$loc_aux2_chg[i]),"</span>)")
+            }
+          },
+          if(!is.na(asd_loc[1])) {
+            paste0("; <span style='color:red'>",
+                   paste(lubridate::as_date(asd_loc),
+                         collapse=","),"</span>")},
+          "  Abruptness = ",
+          round(table_chg$abruptness, digits=2))
+
+      } else {
+
+        title_part <- paste0(
+          "<br>Breakdate(s): <span style='color:blue'>",
+          table_chg$loc_brk, "</span>",
+          if(!is.null(best_traj$loc_aux1_chg)) {
+            if(!(is.na(best_traj$loc_aux1_chg[i]) &
+                 is.na(best_traj$loc_aux2_chg[i]))) {
+              paste0(" (<span style='color:dodgerblue4'>",
+                     best_traj$loc_aux1_chg[i],"</span>",
+                     ", <span style='color:dodgerblue4'>",
+                     best_traj$loc_aux2_chg[i],"</span>)")
+            }
+          },
+          if(!is.na(asd_loc[1])) {
+            paste0("; <span style='color:red'>",
+                   paste(asd_loc,collapse=","),"</span>")},
+          "  Abruptness = ",
+          round(table_chg$abruptness, digits=2))
+
+      }
     }
 
     # Complement title if LOO performed:
