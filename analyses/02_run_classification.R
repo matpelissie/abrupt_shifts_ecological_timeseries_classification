@@ -45,7 +45,9 @@ for (l in 1:length(name)){
     parallel::mclapply(1:length(simu_list),
                        function (i) classif_noise_comb(simu_list, str,
                                                        run_loo=run_loo,
-                                                       asd_thr=asd_thr[l], i),
+                                                       asd_thr=asd_thr[l],
+                                                       edge_lim=5,
+                                                       i),
                        mc.cores = ncores)
 
   # Store trajectories:
@@ -84,7 +86,8 @@ for (l in 1:length(name)){
     parallel::mclapply(1:length(simu_list),
                        function (i) classif_noise_comb(simu_list, str,
                                                        run_loo=run_loo,
-                                                       asd_thr=asd_thr[l], i),
+                                                       asd_thr=asd_thr[l],
+                                                       edge_lim=0, i),
                        mc.cores = ncores)
 
   # Store trajectories:
@@ -188,7 +191,8 @@ for (j in 1:length(transform)){
                                   function (i)
                                     classif_noise_comb(simu_list, str,
                                                        run_loo=run_loo,
-                                                       asd_thr=asd_thr[l], i),
+                                                       asd_thr=asd_thr[l],
+                                                       edge_lim=5, i),
                                   mc.cores = ncores)
 
     # Store trajectories:
@@ -245,7 +249,8 @@ for (j in 1:nrow(asd_thr_list)){ # For each threshold value
       1:length(simu_list),
       function (i) classif_noise_comb(simu_list,
                                       str, run_loo=run_loo,
-                                      asd_thr=asd_thr[l], i),
+                                      asd_thr=asd_thr[l],
+                                      edge_lim=5, i),
       mc.cores = ncores)
 
     # Store trajectories:
