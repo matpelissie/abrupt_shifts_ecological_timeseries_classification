@@ -2142,7 +2142,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
       dplyr::select(simu_id, loc_brk_chg)
 
     # If some timeseries have breakpoints:
-    if (nrow(list_brk_ts) != 0){
+    if(nrow(list_brk_ts) != 0){
 
       # Split timeseries (keeping the breakpoint in each):
       sets2 <- list()
@@ -2233,7 +2233,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
 
 
   ### Leave-One-Out timeseries
-  if (run_loo){
+  if(run_loo){
 
     # Make all leave-one-out timeseries and name them accordingly:
     loo <- lapply(sets$ts, function(x) lapply(1:nrow(x), function(k) x[-k,]))
@@ -2280,7 +2280,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
   }
 
   # store asd parameters:
-  if (str == "aic_asd") best_traj <- best_traj %>%
+  if(str == "aic_asd") best_traj <- best_traj %>%
       dplyr::mutate(asd_thr=asd_thr,
                     lowwl=lowwl,
                     highwl=highwl,
@@ -2289,7 +2289,7 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
   # Plot the 4 different fits with best one colored:
   if(showplots == TRUE){
 
-    if (!run_loo) best_traj_loo <- NULL
+    if(!run_loo) best_traj_loo <- NULL
 
     ## Make plots:
     plots_traj_nch <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_nch,
@@ -2676,6 +2676,7 @@ best_traj_aic <- function(class_res, type, apriori, aic_selec,
 #' for classification ("aic","aic_asd").
 #' @param asd_thr Numeric threshold for as_detect method.
 #' @param run_loo Logical to state whether to perform leave-one-out process.
+#' @param edge_lim Numeric, minimal breakpoint distance to start or end dates.
 #' @param i Integer to indicate the noise combination (to run in parallel).
 #'
 #' @return List two objects:
@@ -2684,7 +2685,7 @@ best_traj_aic <- function(class_res, type, apriori, aic_selec,
 #'
 #' @export
 
-classif_noise_comb <- function(simu_list, str, run_loo, asd_thr, i){
+classif_noise_comb <- function(simu_list, str, run_loo, asd_thr, edge_lim, i){
 
   # Define the noise combination:
   print(paste0("noise combination: ",i,"/",length(simu_list)))
