@@ -2288,7 +2288,8 @@ traj_class <- function(sets, str, abr_mtd, type="sim", noise_comb=NULL,
   if(showplots == TRUE){
 
     if(!run_loo) best_traj_loo <- NULL
-    if(sapply(sets$ts[[1]], lubridate::is.Date)[[1]]==TRUE) is_date <- TRUE
+    if(sapply(sets$ts[[1]], lubridate::is.Date)[[1]]==TRUE){ is_date <- TRUE
+    } else { is_date <- FALSE }
 
     ## Make plots:
     plots_traj_nch <- plot_traj_multi_abt(sets, rslt=res$res_fit$res_nch,
@@ -3030,7 +3031,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
             paste0("; <span style='color:red'>",
                    paste(lubridate::as_date(asd_loc),
                          collapse=","),"</span>")},
-          "  Abruptness = ",
+          " Abruptness = ",
           round(table_chg$abruptness, digits=2))
 
       } else {
@@ -3038,7 +3039,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
         title_part <- paste0(
           "<br>Breakdate(s): <span style='color:blue'>",
           table_chg$loc_brk, "</span>",
-          if(!is.null(best_traj$loc_aux1_chg)) {
+          if("loc_aux1_chg" %in% names(best_traj)) {
             if(!(is.na(best_traj$loc_aux1_chg[i]) &
                  is.na(best_traj$loc_aux2_chg[i]))) {
               paste0(" (<span style='color:dodgerblue4'>",
@@ -3050,7 +3051,7 @@ plot_traj_multi_abt <- function(sets, rslt, plot_class, best_traj,
           if(!is.na(asd_loc[1])) {
             paste0("; <span style='color:red'>",
                    paste(asd_loc,collapse=","),"</span>")},
-          "  Abruptness = ",
+          " Abruptness = ",
           round(table_chg$abruptness, digits=2))
 
       }
