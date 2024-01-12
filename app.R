@@ -37,7 +37,7 @@ prep_data_any <- function(df){
   return(list("ts"=sets, "ts_type"=ts_type, "time_type"=time_time))
 }
 
-quality_df <- readr::read_csv("quality_control_df.csv")
+quality_df <- readr::read_csv("data/04_app/quality_control_df.csv")
 
 
 # user interface ----------------------------------------------------------
