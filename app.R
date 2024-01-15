@@ -109,17 +109,12 @@ ui <- shiny::fluidPage(
                           )
       ),
 
-
-      # h5(shiny::HTML("wAICc: AICc weight <br/>
-      #    LOO: Leave-one-out score  <br/>
-      #    NRMSE: Normalized root mean square error")),
-
-
       # # Sources
       p(shiny::h3(tags$strong("Sources"))),
 
-      p(h6(shiny::HTML("Pélissié M., Devictor V. & Dakos V. <i>In Press</i>. A systematic approach for detecting abrupt shifts in ecological timeseries",
-           "<i>Biological Conservation</i>"))),
+      p(h6(shiny::HTML('Pélissié M., Devictor V. & Dakos V. 2024. A systematic approach for detecting abrupt shifts in ecological timeseries.',
+           '<i>Biological Conservation</i> 290: 110429.',
+           '<a href="https://www.sciencedirect.com/science/article/pii/S000632072300530X">https://doi.org/10.1016/j.biocon.2023.110429</a>.'))),
 
       p(h6("The code to run classification on several timeries is available",
            a(href="https://github.com/matpelissie/abrupt_shifts_ecological_timeseries_classification", "here")))
@@ -133,16 +128,21 @@ ui <- shiny::fluidPage(
 
       shiny::plotOutput("plot"),
 
+      h6(shiny::HTML("wAICc (AICc weight) expresses how much the best model performs in terms of AIC compared to the others. <br/>
+         LOO (Leave-one-out score) indicates how robust is the model choice to the removal of individual data points. <br/>
+         NRMSE (Normalized root mean square error) gives the ratio between the variation not explained by the model and the overall variation.")),
+
       h2("Quality of fit"),
 
       shiny::plotOutput("qul"),
+
+      h6("The plots above show the quality scores of the classification compared with the distribution of those from simulated timeseries correctly (in blue) and incorrectly (in red) classified."),
 
       h2("Quality of fit - table"),
 
       DT::dataTableOutput("tbl")
 
       # To add as input
-      # Expandable panel with asd or not -BUG,
       # Possibility to show asdetect detection timeseries
       # Possibility to change the moving window on which the classification is done
 
