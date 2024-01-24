@@ -752,6 +752,7 @@ prep_data <- function(df, thr=0, type="sim", apriori){
 
   } else if (type=="RAM" | type=="data"){ # For empirical data
 
+    df <- df %>% dplyr::rename_with(.cols=1, ~"scen")
     ts_type <- names(df)[3]
     time_type <- names(df)[2]
     iter <- 1
