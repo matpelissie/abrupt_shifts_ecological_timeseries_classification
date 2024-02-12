@@ -1521,7 +1521,7 @@ chg_fct <- function(ts){
                                        "decrease", "increase"),
                         mag = pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1],
                         rel_chg =
-                          pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1] /
+                          (pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]) /
                           max(abs(pred_chg$bp[length(pred_chg$bp)]),
                                     abs(pred_chg$bp[1])),
                         SDbef = ts %>%
