@@ -1521,7 +1521,8 @@ chg_fct <- function(ts){
                                        "decrease", "increase"),
                         mag = pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1],
                         rel_chg =
-                          mag / max(abs(pred_chg$bp[length(pred_chg$bp)]),
+                          pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1] /
+                          max(abs(pred_chg$bp[length(pred_chg$bp)]),
                                     abs(pred_chg$bp[1])),
                         SDbef = ts %>%
                           dplyr::filter(year<=chg$chngpt) %>%
