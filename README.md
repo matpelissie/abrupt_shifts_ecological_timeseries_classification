@@ -1,6 +1,6 @@
 # A systematic approach for detecting abrupt shifts in ecological timeseries
 
-This repository provides R scripts and data for the following manuscript: **A systematic approach for detecting abrupt shifts in ecological timeseries** accepted for publication in *Biological Conservation* (as part of the Special Issue *Non-equilibrium perspectives in biological conservation*).
+This repository provides R scripts and data for the article: Pélissié M., Devictor V. & Dakos V., 2024, **A systematic approach for detecting abrupt shifts in ecological timeseries** published in *Biological Conservation* (as part of the Special Issue *Non-equilibrium perspectives in biological conservation*).
 
 
 ## R
